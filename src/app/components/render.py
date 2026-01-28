@@ -1,9 +1,10 @@
-# from __future__ import annotations
+from __future__ import annotations
 # from tkinter import Canvas, Event, IntVar
 # from typing import Callable, Literal
 # from dataclasses import dataclass, field
 # from common import DifferentiableRefCell
 # from model.state import State, StateDifference, VertexId, LineId, FaceId, FrozenState, LineType
+from widgets import CanvasPlus
 # from geometry import Vec2
 # from widgets import Anchor, CanvasPlus
 # from widgets import StyleManager

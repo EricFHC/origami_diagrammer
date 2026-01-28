@@ -1,58 +1,83 @@
-# TODO: Waiting for value checks in a lot of methods!!❤❤
-
-from typing import Any, Literal
+from typing import TypedDict, NotRequired
+from enum import IntFlag
 from dataclasses import dataclass
-from tkinter import Canvas, Event, IntVar
-import sys
-sys.path.append(r'D:\projects\origami_diagram\src')
-from common import IteratorWrap
+from tkinter import Canvas, Event
 
-__all__ = ('ItemState', 'StyleManager', 'CanvasPlus')
+__all__ = ('ItemStyleCommon', 'ItemStyleOfState', 'CanvasPlus')
 
-ItemState = Literal['normal', 'hover', 'selected', 'selected-hover']
+class ItemStyleOption(TypedDict):
 
-class StyleManager:
-
-    def __init__(self):
-        self.styles: dict[str, dict] = {
-            "TLine": {},
-            "TPoly": {},
-            "TOval": {}
-        }
-
-    # TODO: add checks
-    def configure(self, name: str, **kwargs: tuple[Any, Any, Any, Any]):
-        self.styles[name] = {
-            s: {k: kwargs[k][i] for k in kwargs}
-            for i, s in enumerate(('normal', 'hover', 'selected', 'selected-hover'))
-        }
-
-    def get(self, name: str, state: ItemState) -> dict:
-        d = {}
-        a = name.split('.')
-        for sub_name in IteratorWrap(range(len(a))).map(lambda i: '.'.join(a[-i-1:])):
-            d |= self.styles[sub_name][state]
-        return d
-
-    @staticmethod
-    def is_sub_style(sub_style: str, style: str) -> bool:
-        return style.endswith(sub_style)
+    dash: NotRequired[str]
+    dashoffset: NotRequired[int]
+    fill: NotRequired[str]
+    stipple: NotRequired[str]
+    width: NotRequired[int]
 
 @dataclass
-class ItemData[U]:
+class ItemStyleCommon:
 
-    userdata: U
-    style: str
+    dash: str | None = None
+    dash_offset: int | None = None
+    fill: str | None = None
+    stipple: str | None = None
+    width: int | None = None
+    alpha: float | None = None
+
+    def into_dict(self) -> ItemStyleOption:
+        options: ItemStyleOption = {}
+
+        if self.dash is not None:
+            options['dash'] = self.dash
+            if self.dash_offset is not None:
+                options['dashoffset'] = self.dash_offset
+
+        if self.fill is not None:
+            options['fill'] = self.fill
+        if self.width is not None:
+            options['width'] = self.width
+
+        # TODO: Major
+        # Implement the alpha filling. (Create a bitmap with PIL.)
+        if self.alpha is not None:
+            pass
+        elif self.stipple is not None:
+            options['stipple'] = self.stipple
+
+        return options
+
+@dataclass
+class ItemStyleOfState:
+
+    normal: ItemStyleOption
+    hover: ItemStyleOption
+    selected: ItemStyleOption
+    selected_hover: ItemStyleOption
+
+    def auto_complete(self):
+        def do(parent: ItemStyleOption, child: ItemStyleOption):
+            for key, value in parent.items():
+                child.setdefault(key, value) # type: ignore
+
+        self.normal.setdefault('dash', '')
+        self.normal.setdefault('fill', 'black')
+        self.normal.setdefault('stipple', '')
+        self.normal.setdefault('width', 2)
+
+        do(self.normal, self.hover)
+        do(self.hover, self.selected)
+        do(self.selected, self.selected_hover)
+
+        return self
 
 class CanvasPlus[U](Canvas):
 
-    def __init__(self, master=None, style: StyleManager | None = None, **kwargs):
+    def __init__(self, master=None, **kwargs):
         super().__init__(master, **kwargs)
 
-        self.style = style or StyleManager()
+        self.style: dict[IntFlag, ItemStyleOfState] = {}
 
         self.mapper: dict[U, int] = {}
-        self.mapper_inverse: dict[int, ItemData[U]] = {}
+        self.mapper_inverse: dict[int, tuple[U, IntFlag]] = {}
 
         self.permit_user_deselect = False
         self.selection: set[int] = set()
@@ -62,68 +87,76 @@ class CanvasPlus[U](Canvas):
 
     # ------------------------------Draw------------------------------
 
-    def _add_item(self, create_func, *coords: tuple[int, int], userdata: U, style: str):
-        item_id = create_func(*IteratorWrap(coords).flatten(), **self.style.get(style, 'normal'))
+    def add_point(self, x: int, y: int, r: int, style: IntFlag, userdata: U):
+        item_id = self.create_oval(x-r, y-r, x+r, y+r, **self.style[style].normal)
         self.mapper[userdata] = item_id
-        self.mapper_inverse[item_id] = ItemData(userdata, style)
+        self.mapper_inverse[item_id] = (userdata, style)
 
-    def add_line(self, p1: tuple[int, int], p2: tuple[int, int], userdata: U, style: str = "TLine"):
-        self._add_item(self.create_line, p1, p2, userdata=userdata, style=style)
+    def add_line(self, x1: int, y1: int, x2: int, y2: int, style: IntFlag, userdata: U):
+        item_id = self.create_line(x1, y1, x2, y2, **self.style[style].normal)
+        self.mapper[userdata] = item_id
+        self.mapper_inverse[item_id] = (userdata, style)
 
-    def add_poly(self, *p: tuple[int, int], userdata: U, style: str = "TPoly"):
-        self._add_item(self.create_polygon, *p, userdata=userdata, style=style)
+    def add_face(self, *coords: int, style: IntFlag, userdata: U):
+        item_id = self.create_polygon(*coords, **self.style[style].normal)
+        self.mapper[userdata] = item_id
+        self.mapper_inverse[item_id] = (userdata, style)
 
     # ------------------------------Selecting------------------------------
 
+    # Bind all methods for selecting.
     def _init_selection(self):
         hover_id = -1
 
         def on_enter(_):
             nonlocal hover_id
             hover_id = self.find_withtag('current')[0]
+            style = self.style[self.mapper_inverse[hover_id][1]]
             if hover_id in self.selection:
-                self.itemconfigure(hover_id, self.style.get(self.mapper_inverse[hover_id].style, 'selected-hover'))
+                self.itemconfigure(hover_id, **style.selected_hover)
             else:
-                self.itemconfigure(hover_id, self.style.get(self.mapper_inverse[hover_id].style, 'hover'))
+                self.itemconfigure(hover_id, **style.hover)
 
         def on_press(_):
             nonlocal hover_id
             # SAFETY
             # Due to the trigger order of events, `hover_id` must point to the item under the mouse.
             self._selection_change = hover_id
-            self.selection_change = self.mapper_inverse[hover_id].userdata
+            self.selection_change = self.mapper_inverse[hover_id][0]
+            style = self.style[self.mapper_inverse[hover_id][1]]
             if hover_id in self.selection:
                 if self.permit_user_deselect:
                     self.selection.remove(hover_id)
-                    self.itemconfigure(hover_id, self.style.get(self.mapper_inverse[hover_id].style, 'hover'))
+                    self.itemconfigure(hover_id, **style.hover)
                     self.event_generate('<<Deselect>>', data=hover_id)
             else:
                 self.selection.add(hover_id)
-                self.itemconfigure(hover_id, self.style.get(self.mapper_inverse[hover_id].style, 'selected-hover'))
+                self.itemconfigure(hover_id, **style.selected_hover)
                 self.event_generate('<<Select>>', data=hover_id)
 
         def on_leave(_):
             nonlocal hover_id
             # SAFETY
             # The same as `on_press`.(～￣▽￣)～
+            style = self.style[self.mapper_inverse[hover_id][1]]
             if hover_id in self.selection:
-                self.itemconfigure(hover_id, self.style.get(self.mapper_inverse[hover_id].style, 'selected'))
+                self.itemconfigure(hover_id, **style.selected)
             else:
-                self.itemconfigure(hover_id, self.style.get(self.mapper_inverse[hover_id].style, 'normal'))
+                self.itemconfigure(hover_id, **style.normal)
             hover_id = -1
 
         self.tag_bind('selectable', '<Enter>', on_enter)
         self.tag_bind('selectable', '<Leave>', on_leave)
         self.tag_bind('selectable', '<ButtonRelease-1>', on_press)
 
-    def enable_selection_of_style(self, style: str):
+    def enable_selection_of_style(self, style: IntFlag):
         for i, d in self.mapper_inverse.items():
-            if StyleManager.is_sub_style(d.style, style):
+            if d[1] in style:
                 self.addtag_withtag('selectable', i)
 
-    def disable_selection_of_style(self, style: str):
+    def disable_selection_of_style(self, style: IntFlag):
         for i, d in self.mapper_inverse.items():
-            if StyleManager.is_sub_style(d.style, style):
+            if d[1] in style:
                 self.dtag(i, 'selectable')
 
     def enable_selection_all(self):
@@ -145,23 +178,23 @@ class CanvasPlus[U](Canvas):
         if i in self.selection:
             return
         self.selection.add(i)
-        self.itemconfigure(i, self.style.get(self.mapper_inverse[i].style, 'selected'))
+        self.itemconfigure(i, **self.style[self.mapper_inverse[i][1]].selected)
 
     def deselect(self, item: U):
         i = self.mapper[item]
         if i not in self.selection:
             return
         self.selection.remove(i)
-        self.itemconfigure(i, self.style.get(self.mapper_inverse[i].style, 'normal'))
+        self.itemconfigure(i, **self.style[self.mapper_inverse[i][1]].normal)
 
     def clear_selection(self):
         for i in self.selection:
-            self.itemconfigure(i, self.style.get(self.mapper_inverse[i].style, 'normal'))
+            self.itemconfigure(i, **self.style[self.mapper_inverse[i][1]].normal)
 
     def wait_selection(self) -> U:
         """Wait until a new item is selected. Similar to `wait_variable`.
 
-        :return U: The userdata pointing to the newly selected item.
+        :return U: The userdata of the newly selected item.
         """
         v = IntVar(self)
         t = self.bind('<<Selected>>', lambda _: v.set(1))
@@ -184,28 +217,98 @@ class CanvasPlus[U](Canvas):
         self.bind('<B1-Motion>', on_drag, add='+')
         self.bind('<ButtonRelease-1>', on_release, add='+')
 
-# TODO
+# TODO: Minor
 # The conflict between drag_scroll and selection.
 
 if __name__ == '__main__':
-    from tkinter import Tk
-    from tkinter.ttk import Button
+    from tkinter import Tk, Checkbutton, Frame, IntVar
+    from enum import auto
+
+    class Styles(IntFlag):
+
+        Empty = 0
+
+        Point = auto()
+        Face = auto()
+
+        RawEdge = auto()
+        Mountain = auto()
+        Valley = auto()
+        Crease = Mountain | Valley
+        Line = Crease | RawEdge
 
     root = Tk()
 
-    style = StyleManager()
-    style.configure(
-        'TLine',
-        fill=('gray', 'gray', 'red', 'red'),
-        width=(8, 8, 8, 8),
-        dash=('-', '-..', '-', '--.--')
-    )
+    frame = Frame(root)
+    frame.pack(side='left', anchor='n', padx=5, pady=5)
 
-    cv = CanvasPlus(root, style)
-    cv.pack()
+    var_point = IntVar()
+    chk_point = Checkbutton(frame, text="point", variable=var_point, onvalue=Styles.Point, offvalue=Styles.Empty)
+    chk_point.pack(side='top', anchor='w')
+
+    var_crease = IntVar()
+    var_m = IntVar()
+    var_v = IntVar()
+    chk_crease = Checkbutton(frame, text="crease", variable=var_crease, onvalue=Styles.Crease, offvalue=Styles.Empty)
+    chk_m = Checkbutton(frame, text="mountain", variable=var_m, onvalue=Styles.Mountain, offvalue=Styles.Empty)
+    chk_v = Checkbutton(frame, text="valley", variable=var_v, onvalue=Styles.Valley, offvalue=Styles.Empty)
+    chk_crease.pack(side='top', anchor='w')
+    chk_m.pack(side='top', anchor='w')
+    chk_v.pack(side='top', anchor='w')
+
+    var_face = IntVar()
+    chk_face = Checkbutton(frame, text="face", variable=var_face, onvalue=Styles.Face, offvalue=Styles.Empty)
+    chk_face.pack(side='top', anchor='w')
+
+    cv = CanvasPlus(root, background='white')
+    cv.pack(fill='both', expand=True, padx=5, pady=5)
+
+    # TODO: A confusing bug
+    # When width in normal being set, the program seems stuck.
+    cv.style[Styles.RawEdge] = ItemStyleOfState(
+        normal=ItemStyleCommon().into_dict(),
+        hover=ItemStyleCommon(dash='--').into_dict(),
+        selected=ItemStyleCommon(fill='purple').into_dict(),
+        selected_hover=ItemStyleCommon().into_dict(),
+    ).auto_complete()
+    cv.style[Styles.Mountain] = ItemStyleOfState(
+        normal=ItemStyleCommon(fill='red').into_dict(),
+        hover=ItemStyleCommon(dash='--').into_dict(),
+        selected=ItemStyleCommon(fill='purple').into_dict(),
+        selected_hover=ItemStyleCommon().into_dict(),
+    ).auto_complete()
+    cv.style[Styles.Face] = ItemStyleOfState(
+        normal=ItemStyleCommon(fill='').into_dict(),
+        hover=ItemStyleCommon(fill='green', stipple='gray50').into_dict(),
+        selected=ItemStyleCommon().into_dict(),
+        selected_hover=ItemStyleCommon().into_dict(),
+    ).auto_complete()
+
     cv.enable_drag_scroll()
+    cv.permit_user_deselect = True
 
-    cv.add_line((0, 0), (100, 100), 1, 'TLine')
-    cv.enable_selection_all()
+    # Mind the order of adding, which determines the order of mouse checking. This may be improved in future work.
+    cv.add_line(0, 0, 0, 100, Styles.RawEdge, 0)
+    cv.add_line(0, 100, 100, 100, Styles.RawEdge, 1)
+    cv.add_line(100, 100, 100, 0, Styles.RawEdge, 2)
+    cv.add_line(100, 0, 0, 0, Styles.RawEdge, 3)
+
+    cv.add_face(0, 0, 100, 0, 100, 100, style=Styles.Face, userdata=5)
+    cv.add_face(0, 0, 0, 100, 100, 100, style=Styles.Face, userdata=6)
+
+    cv.add_line(0, 0, 100, 100, Styles.Mountain, 4)
+
+    selectable_styles = Styles.Empty
+    def set_selection():
+        global selectable_styles
+        cv.disable_selection_of_style(selectable_styles)
+        selectable_styles = Styles.Empty | var_point.get() | var_crease.get() | var_m.get() | var_v.get() | var_face.get()
+        cv.enable_selection_of_style(selectable_styles)
+
+    chk_point['command'] = set_selection
+    chk_crease['command'] = set_selection
+    chk_m['command'] = set_selection
+    chk_v['command'] = set_selection
+    chk_face['command'] = set_selection
 
     root.mainloop()

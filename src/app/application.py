@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 
 from tkinter import Tk, Menu, StringVar, Canvas
 from tkinter.ttk import Frame, Radiobutton, Separator, Scrollbar, Label
@@ -6,24 +6,18 @@ from tkinter.messagebox import Message
 
 from threading import Thread
 
-from typing import Callable
-
 from widgets import bind_drag
 from .components import *
 
 from .process_protocol import *
-
-from common.cell import RefCell
+from .extension_protocol import *
 from common.connection import Connection, create_connection
 
 from model.state import State
 
-from pathlib import Path
 from ._path import PROJECT_DIRECTORY
 
 from . import assets
-from .extension_protocol import ExtensionProtocol
-from .process_protocol import CommandProtocol, SafeCommand
 
 import importlib
 import importlib.util
