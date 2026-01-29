@@ -185,7 +185,7 @@ class _CommandHandler(Thread):
                 elif isinstance(r, RequestItem): self.handle_item_request(r)
                 else: raise RuntimeError("The command thread sent unexpected data.")
         except BaseException as err:
-            Message(self.window, icon='info', type='ok', message=f"An un excepted error has occurred. Details:\n{err}").show()
+            Message(self.window, icon='info', type='ok', message=f"An unexpected error has occurred. Details:\n{err}").show()
         finally:
             self._exit()
 

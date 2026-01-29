@@ -1,7 +1,7 @@
 from tkinter import Widget, Event, StringVar, BooleanVar
 from typing import Callable
 from tkinter.ttk import Combobox, Entry, Checkbutton
-from common import Cell, RefCell, Option, Callbacks
+from common import Cell, Option, Callbacks
 
 __all__ = ('Editor', 'ChoiceEditor', 'SwitchEditor')
 
