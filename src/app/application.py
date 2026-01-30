@@ -3,6 +3,7 @@ from typing import Any, Callable
 from tkinter import Tk, Menu, StringVar, Canvas
 from tkinter.ttk import Frame, Radiobutton, Separator, Scrollbar, Label
 from tkinter.messagebox import Message
+from tkinter import filedialog
 
 from threading import Thread
 
@@ -89,6 +90,9 @@ class Application(Tk):
 
         menu_file = Menu(menu, tearoff=False)
         menu_file.add_command(label="open", accelerator='Ctrl+O')
+        menu_from = Menu(menu_file, tearoff=False)
+        menu_from.add_command(label="fold file", command=self.load_fold_file)
+        menu_file.add_cascade(label="from", menu=menu_from)
         menu.add_cascade(label="file", menu=menu_file)
 
         menu_settings = Menu(menu, tearoff=False)
@@ -123,10 +127,9 @@ class Application(Tk):
         self.workspace.grid_rowconfigure(0, weight=1)
         self.workspace.grid_columnconfigure(0, weight=1)
         # ------------------------------workspace > canvas------------------------------
-        self.cv = Canvas(self.workspace, bg='white')
+        self.cv = StateRenderCanvas(self.workspace, bg='white')
         self.cv.grid(row=0, column=0, sticky='nsew')
-        #self.cv.enable_drag_scroll()
-        #self.cv.set_state(self.current_state)
+        self.cv.enable_drag_scroll()
 
         self.srl_y = Scrollbar(self.workspace, orient='vertical', command=self.cv.yview)
         self.cv['yscrollcommand'] = self.srl_y.set
@@ -155,6 +158,11 @@ class Application(Tk):
         c1, c2 = create_connection()
         _CommandHandler(self, name, c1).start()
         Thread(target=command, args=(c2, )).start()
+
+    def load_fold_file(self):
+        path = filedialog.askopenfilename(parent=self, title="Pick a fold file", filetypes=[('fold file', '*.fold')])
+        self.state = State.load_from_fold_file(path)
+        self.cv.load_state(self.state)
 
 class _CommandHandler(Thread):
 

@@ -87,17 +87,17 @@ class CanvasPlus[U](Canvas):
 
     # ------------------------------Draw------------------------------
 
-    def add_point(self, x: int, y: int, r: int, style: IntFlag, userdata: U):
+    def add_point(self, x: float, y: float, r: float, style: IntFlag, userdata: U):
         item_id = self.create_oval(x-r, y-r, x+r, y+r, **self.style[style].normal)
         self.mapper[userdata] = item_id
         self.mapper_inverse[item_id] = (userdata, style)
 
-    def add_line(self, x1: int, y1: int, x2: int, y2: int, style: IntFlag, userdata: U):
+    def add_line(self, x1: float, y1: float, x2: float, y2: float, style: IntFlag, userdata: U):
         item_id = self.create_line(x1, y1, x2, y2, **self.style[style].normal)
         self.mapper[userdata] = item_id
         self.mapper_inverse[item_id] = (userdata, style)
 
-    def add_face(self, *coords: int, style: IntFlag, userdata: U):
+    def add_face(self, *coords: float, style: IntFlag, userdata: U):
         item_id = self.create_polygon(*coords, **self.style[style].normal)
         self.mapper[userdata] = item_id
         self.mapper_inverse[item_id] = (userdata, style)

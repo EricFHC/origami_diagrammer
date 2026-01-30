@@ -1,13 +1,82 @@
 from __future__ import annotations
-# from tkinter import Canvas, Event, IntVar
-# from typing import Callable, Literal
-# from dataclasses import dataclass, field
-# from common import DifferentiableRefCell
-# from model.state import State, StateDifference, VertexId, LineId, FaceId, FrozenState, LineType
-from widgets import CanvasPlus
-# from geometry import Vec2
-# from widgets import Anchor, CanvasPlus
-# from widgets import StyleManager
+from widgets import CanvasPlus, ItemStyleOfState, ItemStyleCommon
+from model import State, LineType
+from enum import IntFlag, auto
+
+class Style(IntFlag):
+
+    RawEdge = auto()
+    Mountain = auto()
+    Valley = auto()
+    Crease = Mountain | Valley
+
+    Vertex = auto()
+
+    FaceWhite = auto()
+    FaceColor= auto()
+    Face = FaceColor | FaceWhite
+
+class StateRenderCanvas(CanvasPlus):
+
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
+
+        self.set_style()
+
+    def set_style(self):
+        self.style[Style.Vertex] = ItemStyleOfState(
+            normal=ItemStyleCommon(fill='black').into_dict(),
+            hover=ItemStyleCommon().into_dict(),
+            selected=ItemStyleCommon().into_dict(),
+            selected_hover=ItemStyleCommon().into_dict(),
+        )
+
+        self.style[Style.RawEdge] = ItemStyleOfState(
+            normal=ItemStyleCommon(fill='black').into_dict(),
+            hover=ItemStyleCommon(dash='--').into_dict(),
+            selected=ItemStyleCommon(fill='purple').into_dict(),
+            selected_hover=ItemStyleCommon().into_dict(),
+        ).auto_complete()
+        self.style[Style.Mountain] = ItemStyleOfState(
+            normal=ItemStyleCommon(fill='red').into_dict(),
+            hover=ItemStyleCommon(dash='--').into_dict(),
+            selected=ItemStyleCommon(fill='purple').into_dict(),
+            selected_hover=ItemStyleCommon().into_dict(),
+        ).auto_complete()
+        self.style[Style.Valley] = ItemStyleOfState(
+            normal=ItemStyleCommon(fill='blue').into_dict(),
+            hover=ItemStyleCommon(dash='--').into_dict(),
+            selected=ItemStyleCommon(fill='purple').into_dict(),
+            selected_hover=ItemStyleCommon().into_dict(),
+        ).auto_complete()
+
+        self.style[Style.FaceWhite] = ItemStyleOfState(
+            normal=ItemStyleCommon(fill='').into_dict(),
+            hover=ItemStyleCommon(fill='green', stipple='gray50').into_dict(),
+            selected=ItemStyleCommon().into_dict(),
+            selected_hover=ItemStyleCommon().into_dict(),
+        ).auto_complete()
+
+    def load_state(self, state: State):
+        self.clear_selection()
+        self.delete('all')
+
+        for i, f in state.draw_object_face():
+            self.add_face(*map(lambda x: x*400, f), style=Style.FaceWhite, userdata=i)
+
+        for i, p1, p2, line_type in state.draw_object_lines():
+            style = {
+                LineType.Mountain: Style.Mountain,
+                LineType.Valley: Style.Valley,
+                LineType.RawEdge: Style.RawEdge,
+            }[line_type]
+            p1 *= 400
+            p2 *= 400
+            self.add_line(p1.x, p1.y, p2.x, p2.y, style=style, userdata=i)
+
+        for i, p in state.draw_object_points():
+            p *= 400
+            self.add_point(p.x, p.y, 2, style=Style.Vertex, userdata=i)
 
 # class StateRenderCanvas(CanvasPlus):
 
