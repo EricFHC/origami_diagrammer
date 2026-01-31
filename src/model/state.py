@@ -61,6 +61,9 @@ class State:
     # face0 is the infinite face.
     faces: dict[FaceId, Face] = field(default_factory=dict)
 
+    base_face: FaceId | None = None
+    face_transforms: dict[FaceId, Transform] = field(default_factory=dict)
+
     @staticmethod
     def load_from_fold_file(path: str):
         with open(path) as file:
@@ -74,6 +77,7 @@ class State:
         lines: dict[LineId, Line] = {}
         faces: dict[FaceId, Face] = {}
         vertex_id_to_half_edge_id: dict[frozenset[VertexId], list[HalfEdgeId]] = {}
+
         half_edge_cnt = 0
         for i, vs in enumerate(data['faces_vertices']):
             start = half_edge_cnt
@@ -107,6 +111,7 @@ class State:
             half_edges[HalfEdgeId(start)].prev = HalfEdgeId(half_edge_cnt-1)
             half_edges[HalfEdgeId(half_edge_cnt-1)].next_ = HalfEdgeId(start)
             faces[FaceId(i+1)] = Face(HalfEdgeId(start))
+
         borders: dict[VertexId, tuple[VertexId, HalfEdgeId, LineId, int]] = {} # origin and the twin of the half edge
         for i, vs in enumerate(data['edges_vertices']):
             v1 = VertexId(vs[0])
@@ -140,6 +145,7 @@ class State:
             next_id = HalfEdgeId(half_edge_cnt+borders[target][3])
             half_edges[next_id].prev = this_id
         faces[FaceId(0)] = Face(HalfEdgeId(half_edge_cnt+1))
+
         for i, (vs, tp) in enumerate(zip(data['edges_vertices'], data['edges_assignment'])):
             v1 = VertexId(vs[0])
             v2 = VertexId(vs[1])
@@ -147,7 +153,9 @@ class State:
                 'M': LineType.Mountain,
                 'V': LineType.Valley,
                 'B': LineType.RawEdge,
-            }[tp]
+            }.get(tp, None)
+            if line_type is None:
+                raise ValueError(f'Line type {tp} is yet not supported.')
             lines[LineId(i)] = Line(v1=v1, v2=v2, line_type=line_type)
 
         return State(
@@ -155,7 +163,25 @@ class State:
             half_edges=half_edges,
             lines=lines,
             faces=faces,
+            base_face=FaceId(1),
         )
+
+    def _calc_face_transform(self):
+        # Use DFS search.
+        def search(target: FaceId, target_transform: Transform):
+            self.face_transforms[target] = target_transform
+            start = self.faces[target].edge0
+            edge = start
+            while (edge := self.half_edges[edge].next_) != start:
+                neighbor_face_edge = self.half_edges[edge].twin
+                neighbor_face = self.half_edges[neighbor_face_edge].face
+                if not neighbor_face in self.face_transforms:
+                    p1 = self.vertices[self.half_edges[edge].origin].pos
+                    p2 = self.vertices[self.half_edges[self.half_edges[edge].next_].origin].pos
+                    search(neighbor_face, target_transform.then(Transform.fold_transform(p1, p2)))
+        if self.base_face is None:
+            raise ValueError('The base face is yet not assigned.')
+        search(self.base_face, Transform.identity())
 
     def draw_object_points(self):
         yield from {id: v.pos for id, v in self.vertices.items()}.items()
