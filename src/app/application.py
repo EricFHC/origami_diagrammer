@@ -1,6 +1,4 @@
-from typing import Any, Callable
-
-from tkinter import Tk, Menu, StringVar, Canvas
+from tkinter import Tk, Menu, StringVar
 from tkinter.ttk import Frame, Radiobutton, Separator, Scrollbar, Label
 from tkinter.messagebox import Message
 from tkinter import filedialog
@@ -10,8 +8,7 @@ from threading import Thread
 from widgets import bind_drag
 from .components import *
 
-from .process_protocol import *
-from .extension_protocol import *
+from .command_protocol import *
 from common.connection import Connection, create_connection
 
 from model.state import State
@@ -20,8 +17,7 @@ from ._path import PROJECT_DIRECTORY
 
 from . import assets
 
-import importlib
-import importlib.util
+from .commands import basic_folds
 
 class Application(Tk):
 
@@ -34,55 +30,52 @@ class Application(Tk):
     def load(self):
         self.load_images()
         self.setup_ui()
-        self.load_extensions()
 
     def load_images(self):
         path = PROJECT_DIRECTORY / 'assets'
         assets.load(path / 'edit_24.png', 'toolbar::edit')
         assets.load(path / 'view_24.png', 'toolbar::view')
+        for i in range(1, 8):
+            assets.load(path / 'basic_fold' / f'{i}.png', f'basic_folds::{i}')
 
-    def load_extensions(self):
+    # def load_extensions(self):
 
-        def load_extension(extension: ExtensionProtocol):
-            for path, name in extension.assets:
-                assets.load(path, name)
-            for group, buttons in extension.commands.items():
-                command_buttons = []
-                for b in buttons:
-                    if not isinstance(b.command, CommandProtocol):
-                        raise ValueError(f"Command '{b.command}' is invalid.")
-                    if not isinstance(b.command, SafeCommand):
-                        command = SafeCommand(b.command)
-                    else:
-                        command = b.command
-                    command_buttons.append((b.image, b.tooltip, lambda: self._execute_command(b.tooltip, command)))
-                self.command_panel.add(group.image, group.tooltip, *command_buttons)
+    #     def load_extension(extension: ExtensionProtocol):
+    #         for path, name in extension.assets:
+    #             assets.load(path, name)
+    #         for group, buttons in extension.commands.items():
+    #             command_buttons = []
+    #             for b in buttons:
+    #                 if not isinstance(b.command, CommandProtocol):
+    #                     raise ValueError(f"Command '{b.command}' is invalid.")
+    #                 command_buttons.append((b.image, b.tooltip, lambda: self._execute_command(b.tooltip, b.command)))
+    #             self.command_panel.add(group.image, group.tooltip, *command_buttons)
 
-        try:
-            path = PROJECT_DIRECTORY / 'src' / 'extensions'
+    #     try:
+    #         path = PROJECT_DIRECTORY / 'src' / 'extensions'
 
-            if not path.exists:
-                raise FileNotFoundError("Cannot find extensions.")
+    #         if not path.exists:
+    #             raise FileNotFoundError("Cannot find extensions.")
 
-            for item in path.iterdir():
-                if item.name.startswith('_') or not item.is_dir():
-                    continue
+    #         for item in path.iterdir():
+    #             if item.name.startswith('_') or not item.is_dir():
+    #                 continue
 
-                module_name = f'{path.name}.{item.name}'
+    #             module_name = f'{path.name}.{item.name}'
 
-                spec = importlib.util.find_spec(module_name)
-                if spec is None:
-                    continue
+    #             spec = importlib.util.find_spec(module_name)
+    #             if spec is None:
+    #                 continue
 
-                module = importlib.import_module(module_name)
-                if not isinstance(module, ExtensionProtocol):
-                    raise ValueError(f"Extension '{item}' does not follow the protocol.")
+    #             module = importlib.import_module(module_name)
+    #             if not isinstance(module, ExtensionProtocol):
+    #                 raise ValueError(f"Extension '{item}' does not follow the protocol.")
 
-                load_extension(module)
-        except (FileNotFoundError, ValueError) as err:
-            Message(self, icon='error', type='ok', message=err).show()
-        except ImportError as err:
-            Message(self, icon='error', type='ok', message="Failed to import extension.").show()
+    #             load_extension(module)
+    #     except (FileNotFoundError, ValueError) as err:
+    #         Message(self, icon='error', type='ok', message=err).show()
+    #     except ImportError as err:
+    #         Message(self, icon='error', type='ok', message="Failed to import extension.").show()
 
     def setup_ui(self):
         # ------------------------------menu------------------------------
@@ -154,10 +147,17 @@ class Application(Tk):
         self.command_panel = CommandPanel(self.workspace)
         self.command_panel.place(x=20, y=20)
 
-    def _execute_command(self, name: str, command: Callable[[Connection[Data, Any]], None]):
-        c1, c2 = create_connection()
-        _CommandHandler(self, name, c1).start()
-        Thread(target=command, args=(c2, )).start()
+        self.command_panel.add(
+            "basic_folds::1", "7 basic folds",
+            (
+                "basic_folds::2",
+                "fold a point to point",
+                lambda: self._execute_command("fold a point to point", basic_folds.point_to_point)
+            )
+        )
+
+    def _execute_command(self, name: str, command: ModelEditCommand):
+        _CommandHandler(self, name, command).start()
 
     def load_fold_file(self):
         path = filedialog.askopenfilename(parent=self, title="Pick a fold file", filetypes=[('fold file', '*.fold')])
@@ -166,11 +166,14 @@ class Application(Tk):
 
 class _CommandHandler(Thread):
 
-    def __init__(self, window: Application, name: str, conn: Connection[Any, Data]):
+    def __init__(self, window: Application, name: str, command: ModelEditCommand):
         super().__init__()
         self.window = window
         self.command_name = name
-        self.conn = conn
+        c1, c2 = create_connection()
+        self.conn = c1
+        self.command = command
+        self.command_conn = c2
 
     def _enter(self):
         self.window.command_panel.disable()
@@ -186,11 +189,15 @@ class _CommandHandler(Thread):
     def run(self):
         self._enter()
         try:
+            worker = Thread(target=SafeCommand(self.command), args=(self.command_conn, ))
+            worker.start()
             self.conn.send(self.window.state)
-            while r := self.conn.recv():
-                if isinstance(r, End) or r is End: break
-                elif isinstance(r, RequestParameters): self.handle_parameter_request(r)
+            while worker.is_alive():
+                r = self.conn.recv()
+                if isinstance(r, RequestParameters): self.handle_parameter_request(r)
                 elif isinstance(r, RequestItem): self.handle_item_request(r)
+                elif isinstance(r, State): todo()
+                elif isinstance(r, CommandCollapse): raise RuntimeError("The command thread collapse.")
                 else: raise RuntimeError("The command thread sent unexpected data.")
         except BaseException as err:
             Message(self.window, icon='info', type='ok', message=f"An unexpected error has occurred. Details:\n{err}").show()
