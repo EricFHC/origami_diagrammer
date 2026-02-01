@@ -137,6 +137,13 @@ class Application(Tk):
         self.hint_panel.lower()
         self.hint_panel.hand['cursor'] = 'fleur'
         bind_drag(self.hint_panel, self.hint_panel.hand)
+        #---------------------------------------- workspace > logging ----------------------------------------
+        self.logging_panel = LoggingPanel(self.workspace)
+        self.logging_panel.place(x=600, y=20)
+        self.logging_panel.lower()
+        self.logging_panel.hand['cursor'] = 'fleur'
+        bind_drag(self.logging_panel, self.logging_panel.hand)
+        state_logger.addHandler(self.logging_panel.stream_handler)
         # ------------------------------workspace > parameter panel------------------------------
         self.parameter_panel = ParameterPanel(self.workspace)
         self.parameter_panel.place(x=700, y=300)
@@ -161,7 +168,10 @@ class Application(Tk):
 
     def load_fold_file(self):
         path = filedialog.askopenfilename(parent=self, title="Pick a fold file", filetypes=[('fold file', '*.fold')])
+        self.logging_panel.stream_handler.delete('1.0', 'end')
+        self.logging_panel.tkraise()
         self.state = State.load_from_fold_file(path)
+        #self.logging_panel.lower()
         self.cv.load_state(self.state)
 
 class _CommandHandler(Thread):

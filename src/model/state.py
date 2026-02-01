@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import TypedDict, Literal, cast
 from enum import IntFlag, auto
 import json
+import logging
 from .geometry import *
 
 class FoldFormat(TypedDict):
@@ -52,6 +53,9 @@ class Face:
 
     edge0: HalfEdgeId
 
+state_logger = logging.getLogger(__name__)
+state_logger.setLevel('INFO')
+
 @dataclass
 class State:
 
@@ -66,8 +70,10 @@ class State:
 
     @staticmethod
     def load_from_fold_file(path: str):
+        state_logger.info(f"read file {path!r}.")
         with open(path) as file:
             data = cast(FoldFormat, json.load(file))
+        state_logger.info("parsing...")
 
         vertices: dict[VertexId, Vertex] = {
             VertexId(i): Vertex(pos=Vec2(v[0], v[1]), half_edge=HalfEdgeId(-1))
@@ -78,15 +84,16 @@ class State:
         faces: dict[FaceId, Face] = {}
         vertex_id_to_half_edge_id: dict[frozenset[VertexId], list[HalfEdgeId]] = {}
 
+        state_logger.info("collecting all faces")
         half_edge_cnt = 0
-        for i, vs in enumerate(data['faces_vertices']):
+        for i, vs in enumerate(data['faces_vertices'], start=1):
             start = half_edge_cnt
             half_edges[HalfEdgeId(half_edge_cnt)] = HalfEdge(
                 origin=VertexId(vs[0]),
                 twin=HalfEdgeId(-1),
                 next_=HalfEdgeId(-1),
                 prev=HalfEdgeId(-1),
-                face=FaceId(i+1),
+                face=FaceId(i),
                 line=LineId(-1),
             )
             vertices[VertexId(vs[0])].half_edge = HalfEdgeId(half_edge_cnt)
@@ -110,8 +117,9 @@ class State:
                 half_edge_cnt += 1
             half_edges[HalfEdgeId(start)].prev = HalfEdgeId(half_edge_cnt-1)
             half_edges[HalfEdgeId(half_edge_cnt-1)].next_ = HalfEdgeId(start)
-            faces[FaceId(i+1)] = Face(HalfEdgeId(start))
+            faces[FaceId(i)] = Face(HalfEdgeId(start))
 
+        state_logger.info("collecting the border...")
         borders: dict[VertexId, tuple[VertexId, HalfEdgeId, LineId, int]] = {} # origin and the twin of the half edge
         for i, vs in enumerate(data['edges_vertices']):
             v1 = VertexId(vs[0])
@@ -146,6 +154,7 @@ class State:
             half_edges[next_id].prev = this_id
         faces[FaceId(0)] = Face(HalfEdgeId(half_edge_cnt+1))
 
+        state_logger.info("assigning creases...")
         for i, (vs, tp) in enumerate(zip(data['edges_vertices'], data['edges_assignment'])):
             v1 = VertexId(vs[0])
             v2 = VertexId(vs[1])
@@ -155,9 +164,11 @@ class State:
                 'B': LineType.RawEdge,
             }.get(tp, None)
             if line_type is None:
+                state_logger.error(f"line type {tp} is not supported.")
                 raise ValueError(f'Line type {tp} is yet not supported.')
             lines[LineId(i)] = Line(v1=v1, v2=v2, line_type=line_type)
 
+        state_logger.info("finish")
         return State(
             vertices=vertices,
             half_edges=half_edges,
