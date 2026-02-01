@@ -73,8 +73,78 @@ class Segment:
     a: Vec2
     b: Vec2
 
-    def intersection(self, other: Segment):
-        pass
+    def intersection(self, other: Segment, eps: float = 1e-7) -> Vec2 | type[Segment] | None:
+        a = self.a
+        b = self.b
+        c = other.a
+        d = other.b
+
+        if ((max(a.x, b.x) < min(c.x, d.x) or min(a.x, b.x) > max(c.x, d.x)) and
+            (max(a.y, b.y) < min(c.y, d.y) or min(a.y, b.y) > max(c.y, d.y))):
+            return None
+
+        ab = b - a
+        ac = c - a
+        ad = d - a
+        if ab.perp_dot(ac) * ab.perp_dot(ad) > eps:
+            return None
+
+        cd = d - c
+        ca = a - c
+        cb = b - c
+        if cd.perp_dot(ca) * cd.perp_dot(cb) > eps:
+            return None
+
+        denominator = ab.perp_dot(cd)
+
+        if abs(denominator) < eps:
+            return Segment
+
+        u = ac.perp_dot(cd) / denominator
+        return a + ab * u
+
+    def intersection_with_axis_x(self, y: float, eps: float = 1e-7) -> float | type[Segment] | None:
+        if y < min(self.a.y, self.b.y) or y > max(self.a.y, self.b.y):
+            return None
+        if abs(self.a.y - self.b.y) < eps:
+            return Segment
+        d = self.a.y - y
+        if abs(d) < eps:
+            return self.a.x
+        u = d / (self.a.y - self.b.y)
+        return self.a.x - u * (self.a.x - self.b.x)
+
+class TestSegment(unittest.TestCase):
+
+    def test_intersection(self):
+        r = Segment(Vec2(1, 0), Vec2(0, 1)).intersection(Segment(Vec2(0, 0), Vec2(1, 1)))
+        self.assertTrue(isinstance(r, Vec2))
+        assert isinstance(r, Vec2)
+        self.assertAlmostEqual(r, Vec2(0.5, 0.5))
+
+        r = Segment(Vec2(0, 0), Vec2(10, 10)).intersection(Segment(Vec2(8, 8), Vec2(20, 20)))
+        self.assertIs(r, Segment)
+
+        r = Segment(Vec2(10, 10), Vec2(5, 5)).intersection(Segment(Vec2(7, 6), Vec2(10, 6)))
+        self.assertIsNone(r)
+
+        r = Segment(Vec2(0, 0), Vec2(10, 10)).intersection(Segment(Vec2(10, 10), Vec2(20, 5)))
+        assert isinstance(r, Vec2)
+        self.assertIsInstance(r, Vec2)
+        self.assertAlmostEqual(r, Vec2(10, 10))
+
+        r = Segment(Vec2(0, 0), Vec2(10, 10)).intersection_with_axis_x(2.0)
+        assert isinstance(r, float)
+        self.assertTrue(isinstance(r, float))
+        self.assertAlmostEqual(r, 2.0)
+
+        r = Segment(Vec2(10, 0), Vec2(0, 10)).intersection_with_axis_x(4.0)
+        assert isinstance(r, float)
+        self.assertTrue(isinstance(r, float))
+        self.assertAlmostEqual(r, 6.0)
+
+        r = Segment(Vec2(0, 0), Vec2(10, 0)).intersection_with_axis_x(0)
+        self.assertIs(r, Segment)
 
 @dataclass
 class Transform:
