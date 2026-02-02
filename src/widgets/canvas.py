@@ -102,6 +102,21 @@ class CanvasPlus[U](Canvas):
         self.mapper[userdata] = item_id
         self.mapper_inverse[item_id] = (userdata, style)
 
+    def zoom(self, factor: float):
+        """Note: Do not use this method too often, which may cause precise issues."""
+        for item in self.mapper_inverse.keys():
+            c = self.coords(item)
+            tp = self.type(item)
+            if tp in ('polygon', 'line'):
+                self.coords(item, tuple(map(lambda x: x*factor, c)))
+            elif tp == 'oval':
+                left, top, right, bottom = c
+                x = (left + right) * 0.5 * factor
+                y = (top + bottom) * 0.5 * factor
+                r_x = (right - left) * 0.5
+                r_y = (bottom - top) * 0.5
+                self.coords(item, (x-r_x, y-r_y, x+r_x, y+r_y))
+
     # ------------------------------Selecting------------------------------
 
     # Bind all methods for selecting.

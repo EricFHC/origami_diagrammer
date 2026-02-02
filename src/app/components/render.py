@@ -62,7 +62,7 @@ class StateRenderCanvas(CanvasPlus):
         self.delete('all')
 
         for i, f in state.draw_object_face():
-            self.add_face(*map(lambda x: x*400, f), style=Style.FaceWhite, userdata=i)
+            self.add_face(*f, style=Style.FaceWhite, userdata=i)
 
         for i, p1, p2, line_type in state.draw_object_lines():
             style = {
@@ -70,13 +70,12 @@ class StateRenderCanvas(CanvasPlus):
                 LineType.Valley: Style.Valley,
                 LineType.RawEdge: Style.RawEdge,
             }[line_type]
-            p1 *= 400
-            p2 *= 400
             self.add_line(p1.x, p1.y, p2.x, p2.y, style=style, userdata=i)
 
         for i, p in state.draw_object_points():
-            p *= 400
             self.add_point(p.x, p.y, 2, style=Style.Vertex, userdata=i)
+
+        self.zoom(400.)
 
 # class StateRenderCanvas(CanvasPlus):
 
