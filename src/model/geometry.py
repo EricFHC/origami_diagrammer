@@ -3,19 +3,17 @@ from dataclasses import dataclass
 from math import hypot
 import unittest
 
+@dataclass(frozen=True)
 class Vec2:
 
-    __slots__ = ('x', 'y')
-
-    def __init__(self, x: float, y: float):
-        self.x = x
-        self.y = y
+    x: float
+    y: float
 
     def __repr__(self) -> str:
         return f'({self.x:.7f}, {self.y:.7f})'
 
-    def copy(self) -> Vec2:
-        return Vec2(self.x, self.y)
+    # def copy(self) -> Vec2:
+    #     return Vec2(self.x, self.y)
 
     def perp(self) -> Vec2:
         return Vec2(-self.y, self.x)
@@ -47,25 +45,25 @@ class Vec2:
     def __truediv__(self, rhs: float) -> Vec2:
         return Vec2(self.x / rhs, self.y / rhs)
 
-    def __iadd__(self, rhs: Vec2):
-        self.x += rhs.x
-        self.y += rhs.y
-        return self
+    # def __iadd__(self, rhs: Vec2):
+    #     self.x += rhs.x
+    #     self.y += rhs.y
+    #     return self
 
-    def __isub__(self, rhs: Vec2):
-        self.x -= rhs.x
-        self.y -= rhs.y
-        return self
+    # def __isub__(self, rhs: Vec2):
+    #     self.x -= rhs.x
+    #     self.y -= rhs.y
+    #     return self
 
-    def __imul__(self, rhs: float):
-        self.x *= rhs
-        self.y *= rhs
-        return self
+    # def __imul__(self, rhs: float):
+    #     self.x *= rhs
+    #     self.y *= rhs
+    #     return self
 
-    def __itruediv__(self, rhs: float):
-        self.x /= rhs
-        self.y /= rhs
-        return self
+    # def __itruediv__(self, rhs: float):
+    #     self.x /= rhs
+    #     self.y /= rhs
+    #     return self
 
 @dataclass
 class Segment:

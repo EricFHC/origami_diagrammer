@@ -195,11 +195,11 @@ class State:
         search(self.base_face, Transform.identity())
 
     def draw_object_points(self):
-        yield from {id: v.pos.copy() for id, v in self.vertices.items()}.items()
+        yield from {id: v.pos for id, v in self.vertices.items()}.items()
 
     def draw_object_lines(self):
         for i, l in self.lines.items():
-            yield i, self.vertices[l.v1].pos.copy(), self.vertices[l.v2].pos.copy(), l.line_type
+            yield i, self.vertices[l.v1].pos, self.vertices[l.v2].pos, l.line_type
 
     def draw_object_face(self):
         for i, f in self.faces.items():
