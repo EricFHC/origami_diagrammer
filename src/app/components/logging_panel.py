@@ -14,6 +14,7 @@ class LoggingPanel(Frame):
 
         self.stream_handler = LoggingText(self, relief='flat')
         self.stream_handler.pack(fill='both', expand=True, padx=5, pady=5)
+        self.stream_handler.set_default_style()
         self.stream_handler.setFormatter(logging.Formatter(
             '%(asctime)s [%(levelname)s] %(message)s',
             datefmt='%H:%M:%S',
