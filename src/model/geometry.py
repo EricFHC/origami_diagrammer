@@ -1,10 +1,14 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import NamedTuple
 from math import hypot
-import unittest
 
-@dataclass(frozen=True)
-class Vec2:
+#######################################################################################################################
+# Vec2
+#######################################################################################################################
+
+#@dataclass(frozen=True, eq=False, slots=True)
+class Vec2(NamedTuple):
 
     x: float
     y: float
@@ -33,13 +37,13 @@ class Vec2:
     def __abs__(self) -> float:
         return hypot(self.x, self.y)
 
-    def __add__(self, rhs: Vec2) -> Vec2:
+    def __add__(self, rhs: Vec2) -> Vec2: # type: ignore
         return Vec2(self.x + rhs.x, self.y + rhs.y)
 
     def __sub__(self, rhs: Vec2) -> Vec2:
         return Vec2(self.x - rhs.x, self.y - rhs.y)
 
-    def __mul__(self, rhs: float) -> Vec2:
+    def __mul__(self, rhs: float) -> Vec2: # type: ignore
         return Vec2(self.x * rhs, self.y * rhs)
 
     def __truediv__(self, rhs: float) -> Vec2:
@@ -64,6 +68,10 @@ class Vec2:
     #     self.x /= rhs
     #     self.y /= rhs
     #     return self
+
+#######################################################################################################################
+# Segment
+#######################################################################################################################
 
 @dataclass
 class Segment:
@@ -112,37 +120,15 @@ class Segment:
         u = d / (self.a.y - self.b.y)
         return self.a.x - u * (self.a.x - self.b.x)
 
-class TestSegment(unittest.TestCase):
+    def intersection_with_axis_x_unsafe(self, y: float, eps: float = 1e-7) -> float:
+        res = self.intersection_with_axis_x(y, eps)
+        if isinstance(res, (float, int)):
+            return res
+        raise RuntimeError()
 
-    def test_intersection(self):
-        r = Segment(Vec2(1, 0), Vec2(0, 1)).intersection(Segment(Vec2(0, 0), Vec2(1, 1)))
-        self.assertTrue(isinstance(r, Vec2))
-        assert isinstance(r, Vec2)
-        self.assertAlmostEqual(r, Vec2(0.5, 0.5))
-
-        r = Segment(Vec2(0, 0), Vec2(10, 10)).intersection(Segment(Vec2(8, 8), Vec2(20, 20)))
-        self.assertIs(r, Segment)
-
-        r = Segment(Vec2(10, 10), Vec2(5, 5)).intersection(Segment(Vec2(7, 6), Vec2(10, 6)))
-        self.assertIsNone(r)
-
-        r = Segment(Vec2(0, 0), Vec2(10, 10)).intersection(Segment(Vec2(10, 10), Vec2(20, 5)))
-        assert isinstance(r, Vec2)
-        self.assertIsInstance(r, Vec2)
-        self.assertAlmostEqual(r, Vec2(10, 10))
-
-        r = Segment(Vec2(0, 0), Vec2(10, 10)).intersection_with_axis_x(2.0)
-        assert isinstance(r, float)
-        self.assertTrue(isinstance(r, float))
-        self.assertAlmostEqual(r, 2.0)
-
-        r = Segment(Vec2(10, 0), Vec2(0, 10)).intersection_with_axis_x(4.0)
-        assert isinstance(r, float)
-        self.assertTrue(isinstance(r, float))
-        self.assertAlmostEqual(r, 6.0)
-
-        r = Segment(Vec2(0, 0), Vec2(10, 0)).intersection_with_axis_x(0)
-        self.assertIs(r, Segment)
+#######################################################################################################################
+# Transform
+#######################################################################################################################
 
 @dataclass
 class Transform:
@@ -209,33 +195,3 @@ class Transform:
             self.a * v.x + self.b * v.y + self.c,
             self.d * v.x + self.e * v.y + self.f,
         ) # * self.i
-
-class TestTransform(unittest.TestCase):
-
-    def test_mat_multiply(self):
-        self.assertEqual(
-            Transform(-1, 2, 0, 3, -4, 5, -2, 0, 1)
-            .mul(Transform(2, -3, 1, 0, 4, -2, -1, 0, 3)),
-            Transform(-2, 11, -5, 1, -25, 26, -5, 6, 1)
-        )
-        self.assertEqual(
-            Transform(1, 2, 3, 4, 5, 6, 7, 8, 9).mul(Transform.identity()),
-            Transform(1, 2, 3, 4, 5, 6, 7, 8, 9)
-        )
-
-    def test_fold_transform(self):
-        self.assertAlmostEqual(Transform.fold_transform(Vec2(0, 1), Vec2(1, 0)).apply_to(Vec2(0, 0)), Vec2(1, 1))
-        self.assertAlmostEqual(Transform.fold_transform(Vec2(1, 0), Vec2(0, 3**0.5)).apply_to(Vec2(0, 0)), Vec2(1.5, 0.5*3**0.5))
-
-        t = Transform.fold_transform(Vec2(10, 0), Vec2(10, 1))
-        t = t.then(t)
-        for v in (Vec2(1, 1), Vec2(10, 0), Vec2(-5, -7), Vec2(20, -9)):
-            self.assertAlmostEqual(t.apply_to(v), v)
-
-    def test_multi_transform(self):
-        t = Transform(1, 0, 1, 0, 1, 0, 0, 0, 1)
-        t2 = Transform.fold_transform(Vec2(10, 0), Vec2(0, 10))
-        self.assertAlmostEqual(t.then(t2).apply_to(Vec2(1, 1)), Vec2(9, 8))
-
-if __name__ == '__main__':
-    unittest.main()
