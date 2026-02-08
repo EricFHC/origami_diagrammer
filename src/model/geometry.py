@@ -73,8 +73,8 @@ class Vec2(NamedTuple):
 # Segment
 #######################################################################################################################
 
-@dataclass
-class Segment:
+#@dataclass
+class Segment(NamedTuple):
 
     a: Vec2
     b: Vec2

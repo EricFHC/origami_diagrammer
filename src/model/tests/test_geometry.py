@@ -18,6 +18,9 @@ class TestSegment:
        assert isinstance(r, Vec2)
        assert r == approx(Vec2(10, 10))
 
+       r = Segment(Vec2(1, 6), Vec2(4, 3)).intersection(Segment(Vec2(2, 2), Vec2(6, 2)))
+       assert r is None
+
     def test_intersection_with_axis_x(self):
        r = Segment(Vec2(0, 0), Vec2(10, 10)).intersection_with_axis_x(2.0)
        assert isinstance(r, float)
