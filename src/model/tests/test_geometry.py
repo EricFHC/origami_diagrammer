@@ -1,4 +1,5 @@
 from model.geometry import *
+from math import pi
 from pytest import approx
 
 class TestSegment:
@@ -32,6 +33,11 @@ class TestSegment:
 
        r = Segment(Vec2(0, 0), Vec2(10, 0)).intersection_with_axis_x(0)
        assert r is Segment
+
+class TestStraightLine:
+
+    def test(self):
+        assert StraightLine.from_segment(Segment(Vec2(1, 0), Vec2(1, 1))) == approx(StraightLine(0.0, 1.0))
 
 class TestTransform:
 

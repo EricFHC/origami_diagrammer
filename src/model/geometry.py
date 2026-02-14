@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import NamedTuple
-from math import hypot
+from typing import NamedTuple, Self
+from math import hypot, atan, isclose
 
 #######################################################################################################################
 # Vec2
@@ -125,6 +125,42 @@ class Segment(NamedTuple):
         if isinstance(res, (float, int)):
             return res
         raise RuntimeError()
+
+#######################################################################################################################
+# Straight line
+#######################################################################################################################
+
+class StraightLine(NamedTuple):
+    """Straight line class.
+
+    Attributes:
+        theta (float): The angle between the line's normal vector and x-axis in radians. Its range is (-pi/2, pi/2].
+        d (float): The distance between the origin and the line.
+    """
+
+    theta: float
+    d: float
+
+    @staticmethod
+    def from_segment(segment: Segment, eps: float = 1e-7) -> StraightLine | None:
+        n = (segment.a - segment.b).perp()
+        if (l := n.length()) < eps:
+            return None
+        n = n / l
+
+        # Line: ax + by + c = 0
+        a, b = n
+        c = -n.dot(segment.a)
+
+        tangent = float('+inf') if a < eps else b / a
+
+        return StraightLine(
+            theta=atan(tangent),
+            d=abs(c),
+        )
+
+    def eq_with_eps(self, other: Self, eps: float = 1e-7) -> bool:
+        return isclose(self.theta, other.theta, abs_tol=eps) and isclose(self.d, other.d, abs_tol=eps)
 
 #######################################################################################################################
 # Transform

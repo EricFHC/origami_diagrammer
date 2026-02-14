@@ -1,4 +1,7 @@
+from model.geometry import *
 from model.line_sweep import *
+from model.floating import *
+from math import pi, sqrt
 from pytest import approx
 
 class TestLineSweep:
@@ -10,7 +13,7 @@ class TestLineSweep:
             assert k in expected
         for k, v in expected.items():
             assert k in results
-            assert results[k] == approx(v, abs=1e-8)
+            assert tuple(results[k]) == approx(tuple(v), abs=1e-8)
 
     def display_res(self, results, expected):
         all_key = set(tuple(results.keys()) + tuple(expected.keys()))
@@ -18,10 +21,10 @@ class TestLineSweep:
         e_only = []
         print('---common: re, ex---')
         for key in all_key:
-            if key in results and key in expected:
+            if (key in results) and (key in expected):
                 r = results[key]
                 e = expected[key]
-                print(key, r, e, "ok" if r == approx(e, abs=1e-8) else "err")
+                print(key, r, e, "ok" if tuple(r) == approx(tuple(e), abs=1e-8) else "err")
             elif key in results:
                 r_only.append(key)
             else:
@@ -54,7 +57,8 @@ class TestLineSweep:
             frozenset({4, 5}): Vec2(5.5625, 8.0078125),
             frozenset({4, 6}): Vec2(2.952380952, 5.071428571),
         }
-        results = calc_all_intersections(segments)
+        results, dup = calc_all_intersections(segments)
+        assert len(dup) == 0
         self.assert_res(results, expected)
 
     def test_trival2(self):
@@ -77,7 +81,8 @@ class TestLineSweep:
 
             frozenset({1, 4}): Vec2(4, 3),
         }
-        results = calc_all_intersections(segments)
+        results, dup = calc_all_intersections(segments)
+        assert len(dup) == 0
         self.display_res(results, expected)
         self.assert_res(results, expected)
 
@@ -101,7 +106,8 @@ class TestLineSweep:
             frozenset({1, 4}): Vec2(6.5, 2.5),
             frozenset({4, 5}): Vec2(8, 4),
         }
-        results = calc_all_intersections(segments)
+        results, dup = calc_all_intersections(segments)
+        assert len(dup) == 0
         self.assert_res(results, expected)
 
     def test_segment_parallel_with_sweep_line(self):
@@ -132,7 +138,27 @@ class TestLineSweep:
             frozenset({2, 7}): Vec2(3, 2),
             frozenset({5, 8}): Vec2(8, 7),
         }
-        results = calc_all_intersections(segments)
+        results, dup = calc_all_intersections(segments)
+        assert len(dup) == 0
+        self.display_res(results, expected)
+        self.assert_res(results, expected)
+
+    def test_segment_parallel_with_sweep_line2(self):
+        segments = dict(enumerate((
+            Segment(Vec2(1, 0), Vec2(1, 3)),
+            Segment(Vec2(2, 0), Vec2(2, 3)),
+
+            Segment(Vec2(0, 1), Vec2(3, 1)),
+            Segment(Vec2(0, 2), Vec2(3, 2)),
+        )))
+        expected = {
+            frozenset({0, 2}): Vec2(1, 1),
+            frozenset({0, 3}): Vec2(1, 2),
+            frozenset({1, 2}): Vec2(2, 1),
+            frozenset({1, 3}): Vec2(2, 2),
+        }
+        results, dup = calc_all_intersections(segments)
+        assert len(dup) == 0
         self.display_res(results, expected)
         self.assert_res(results, expected)
 
@@ -154,7 +180,8 @@ class TestLineSweep:
 
             frozenset({1, 4}): Vec2(3.5, 2.5),
         }
-        results = calc_all_intersections(segments)
+        results, dup = calc_all_intersections(segments)
+        assert len(dup) == 0
         self.display_res(results, expected)
         self.assert_res(results, expected)
 
@@ -179,6 +206,67 @@ class TestLineSweep:
             frozenset({1, 5}): Vec2(3.8, 6.6),
             frozenset({2, 5}): Vec2(3.5, 7.5),
         }
-        results = calc_all_intersections(segments)
+        results, dup = calc_all_intersections(segments)
+        assert len(dup) == 0
         self.display_res(results, expected)
         self.assert_res(results, expected)
+
+    def test_duplicated_segments(self):
+        segments = dict(enumerate((
+            Segment(Vec2(0, 0), Vec2(2, 2)),
+            Segment(Vec2(1, 1), Vec2(3, 3)),
+            Segment(Vec2(0, 3), Vec2(3, 0)),
+
+            Segment(Vec2(0, 1), Vec2(3, 1)),
+
+            Segment(Vec2(1, 1), Vec2(2, 2)),
+        )))
+        expected = {
+            frozenset({1, 2, 0, 4}): Vec2(1.5, 1.5),
+
+            frozenset({3, 0}): Vec2(1, 1),
+            frozenset({3, 2}): Vec2(2, 1),
+            frozenset({3, 1}): Vec2(1, 1),
+            frozenset({3, 4}): Vec2(1, 1),
+        }
+        expected_dup = FloatSeqDict.from_pair(
+            1e-8,
+            (StraightLine(-pi/4, 0.0), {0, 1, 4}),
+        )
+        results, dup = calc_all_intersections(segments)
+
+        self.display_res(results, expected)
+        self.assert_res(results, expected)
+
+        self.display_res(dup, expected_dup)
+        self.assert_res(dup, expected_dup)
+
+    def test_duplicated_segments_with_parallel(self):
+        segments = dict(enumerate((
+            Segment(Vec2(0, 0), Vec2(2, 2)),
+            Segment(Vec2(1, 1), Vec2(3, 3)),
+            Segment(Vec2(0, 3), Vec2(3, 0)),
+
+            Segment(Vec2(0, 1), Vec2(3, 1)),
+
+            Segment(Vec2(1, 0), Vec2(4, 3)),
+            Segment(Vec2(2, 1), Vec2(4, 3)),
+        )))
+        expected = {
+            frozenset({1, 2, 0}): Vec2(1.5, 1.5),
+            frozenset({4, 5, 2, 3}): Vec2(2, 1),
+
+            frozenset({3, 0, 1}): Vec2(1, 1),
+        }
+        expected_dup = FloatSeqDict.from_pair(
+            1e-8,
+            (StraightLine(-pi/4, 0.0), {0, 1}),
+            (StraightLine(-pi/4, sqrt(2)/2), {4, 5}),
+        )
+        results, dup = calc_all_intersections(segments)
+
+        self.display_res(results, expected)
+        self.assert_res(results, expected)
+
+        self.display_res(dup, expected_dup)
+        self.assert_res(dup, expected_dup)

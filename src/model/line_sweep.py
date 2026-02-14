@@ -1,9 +1,12 @@
 from __future__ import annotations
-from typing import cast, Literal, NamedTuple
+from typing import cast, Literal
 from dataclasses import dataclass, field
-from .geometry import Segment, Vec2
+from .geometry import Segment, Vec2, StraightLine
+from .floating import *
 import bisect
 from itertools import combinations
+
+__all__ = ('calc_all_intersections', )
 
 # Some overall notes.
 # The sweep line is parallel with the x axis, with its y increasing.
@@ -233,9 +236,18 @@ class AVLTree[I]:
 #######################################################################################################################
 
 # NOTE: There should not be inf/-inf in the coords of segments inputted.
-def calc_all_intersections[I](segments: dict[I, Segment], eps: float = 1e-7) -> dict[frozenset[I], Vec2]:
+def calc_all_intersections[I](segments: dict[I, Segment], eps: float = 1e-7) -> tuple[dict[frozenset[I], Vec2], FloatSeqDict[StraightLine, set[I]]]:
+    """_summary_
+
+    Args:
+        segments (dict[I, Segment]): _description_
+        eps (float, optional): Epsilon for float comparison. Defaults to 1e-7.
+
+    Returns:
+        dict[frozenset[I], Vec2]: _description_
+    """
     if len(segments) < 2:
-        return {}
+        return ({}, FloatSeqDict(eps))
 
     events = AVLTree[I]()
     for i, s in segments.items():
@@ -252,24 +264,32 @@ def calc_all_intersections[I](segments: dict[I, Segment], eps: float = 1e-7) -> 
     sweep_status: list[I] = []
     checked_intersections: set[frozenset[I]] = set()
     intersections: dict[frozenset[I], Vec2] = {}
+    duplicated_segments = FloatSeqDict[StraightLine, set[I]](eps)
     # TODO: Think of a name.
     # For handling segments parallel with the sweep line.
-    sg: list[I] = []
+    segments_active: list[I] = [] # This follows the operations on sweep_status, except the removing operation.
     parallel_ss: list[I] = []
     flag_with_parallel: bool = False
 
     def check_segments(i: int, j: int):
-        nonlocal sweep_status, intersections, segments, checked_intersections
+        nonlocal sweep_status, segments, checked_intersections, duplicated_segments
         s_i = sweep_status[i]
         s_j = sweep_status[j]
         # TODO: Handle other situations.
-        if (frozenset({s_i, s_j}) not in checked_intersections and
-            isinstance(p := segments[s_i].intersection(segments[s_j]), Vec2)):
-            checked_intersections.add(frozenset({s_i, s_j}))
-            events.insert(p.y, p.x, EventIntersection(s_i, s_j), eps)
+        if frozenset({s_i, s_j}) not in checked_intersections:
+            p = segments[s_i].intersection(segments[s_j])
+            if isinstance(p, Vec2):
+                checked_intersections.add(frozenset({s_i, s_j}))
+                events.insert(p.y, p.x, EventIntersection(s_i, s_j), eps)
+            elif p is Segment:
+                straight_line = StraightLine.from_segment(segments[s_i], eps)
+                if straight_line is None:
+                    raise RuntimeError()
+                duplicated_segments.setdefault(straight_line, set())
+                duplicated_segments[straight_line].update({s_i, s_j})
 
     def check_neighbor_segments(index: int):
-        nonlocal sweep_status, intersections, segments
+        nonlocal sweep_status
         n = len(sweep_status)
         if 0 <= index-1:
             check_segments(index, index-1)
@@ -288,7 +308,7 @@ def calc_all_intersections[I](segments: dict[I, Segment], eps: float = 1e-7) -> 
                 check_neighbor_segments(index)
 
                 if flag_with_parallel:
-                    sg.append(i)
+                    segments_active.append(i)
             if (event_intersection := node.event.inner.event_intersection):
                 # Add intersections here so that segments meeting at the same points are automatically grouped.
                 intersections[frozenset(event_intersection)] = Vec2(node.x, node.y)
@@ -312,18 +332,23 @@ def calc_all_intersections[I](segments: dict[I, Segment], eps: float = 1e-7) -> 
         elif isinstance(node.event.inner, EventAtXY.Parallel):
             if node.event.inner.tp == 'start':
                 parallel_ss.extend((node.event.inner.segments))
-                sg.extend(sweep_status)
+                segments_active.extend(sweep_status)
                 flag_with_parallel = True
             else:
-                for s_i in sg:
+                for s_i in segments_active:
                     for s_j in parallel_ss:
                         p = segments[s_i].intersection(segments[s_j])
                         if isinstance(p, Vec2):
                             intersections[frozenset({s_i, s_j})] = p
-                # TODO: Intersections between the parallel segments.
-                # exit
+                # Intersections between the parallel segments.
+                if len(parallel_ss) > 1:
+                    straight_line = StraightLine.from_segment(segments[parallel_ss[0]], eps)
+                    if straight_line is not None:
+                        duplicated_segments.setdefault(straight_line, set())
+                        duplicated_segments[straight_line].update(parallel_ss)
+                # Exit.
                 flag_with_parallel = False
                 parallel_ss.clear()
-                sg.clear()
+                segments_active.clear()
 
-    return intersections
+    return (intersections, duplicated_segments)
