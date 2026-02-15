@@ -59,6 +59,7 @@ class TestLineSweep:
         }
         results, dup = calc_all_intersections(segments)
         assert len(dup) == 0
+        self.display_res(results, expected)
         self.assert_res(results, expected)
 
     def test_trival2(self):
@@ -224,10 +225,8 @@ class TestLineSweep:
         expected = {
             frozenset({1, 2, 0, 4}): Vec2(1.5, 1.5),
 
-            frozenset({3, 0}): Vec2(1, 1),
+            frozenset({3, 0, 1, 4}): Vec2(1, 1),
             frozenset({3, 2}): Vec2(2, 1),
-            frozenset({3, 1}): Vec2(1, 1),
-            frozenset({3, 4}): Vec2(1, 1),
         }
         expected_dup = FloatSeqDict.from_pair(
             1e-8,
@@ -265,8 +264,8 @@ class TestLineSweep:
         )
         results, dup = calc_all_intersections(segments)
 
-        self.display_res(results, expected)
-        self.assert_res(results, expected)
-
         self.display_res(dup, expected_dup)
         self.assert_res(dup, expected_dup)
+
+        self.display_res(results, expected)
+        self.assert_res(results, expected)

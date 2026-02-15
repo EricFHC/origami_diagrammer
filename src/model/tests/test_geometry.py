@@ -10,7 +10,7 @@ class TestSegment:
        assert r == approx(Vec2(0.5, 0.5))
 
        r = Segment(Vec2(0, 0), Vec2(10, 10)).intersection(Segment(Vec2(8, 8), Vec2(20, 20)))
-       assert r is Segment
+       assert r == approx(Segment(Vec2(8, 8), Vec2(10, 10))) or r == approx(Segment(Vec2(10, 10), Vec2(8, 8)))
 
        r = Segment(Vec2(10, 10), Vec2(5, 5)).intersection(Segment(Vec2(7, 6), Vec2(10, 6)))
        assert r is None

@@ -79,7 +79,7 @@ class Segment(NamedTuple):
     a: Vec2
     b: Vec2
 
-    def intersection(self, other: Segment, eps: float = 1e-7) -> Vec2 | type[Segment] | None:
+    def intersection(self, other: Segment, eps: float = 1e-7) -> Vec2 | Segment | None:
         a = self.a
         b = self.b
         c = other.a
@@ -104,7 +104,13 @@ class Segment(NamedTuple):
         denominator = ab.perp_dot(cd)
 
         if abs(denominator) < eps:
-            return Segment
+            if 0 < ac.dot(ab) < ab.length_squared(): # 取 c
+                if 0 < cd.dot(ca) < cd.length_squared(): # 取 a
+                    return Segment(a, c)
+                return Segment(b, c)
+            elif 0 < cd.dot(cd) < cd.length_squared():
+                return Segment(a, d)
+            return Segment(b, d)
 
         u = ac.perp_dot(cd) / denominator
         return a + ab * u

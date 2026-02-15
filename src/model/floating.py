@@ -5,13 +5,23 @@ def eq_with_eps[T: tuple[float, ...]](a: T, b: T, eps: float = 1e-7) -> bool:
     assert len(a) == len(b)
     return all(isclose(a_i, b_i, abs_tol=eps) for a_i, b_i in zip(a, b))
 
-def lt_with_eps[T: tuple[float, ...]](a: T, b: T, eps: float = 1e-7) -> bool:
+def gt_with_eps[T: tuple[float, ...]](a: T, b: T, eps: float = 1e-7) -> bool:
     assert len(a) == len(b)
-    return any(a_i > b_i + eps for a_i, b_i in zip(a, b))
+    for a_i, b_i in zip(a, b):
+        if a_i > b_i - eps:
+            return True
+        if a_i < b_i + eps:
+            return False
+    return False
 
-def lt_unsafe[T: tuple[float, ...]](a: T, b: T) -> bool:
+def gt_unsafe[T: tuple[float, ...]](a: T, b: T) -> bool:
     assert len(a) == len(b)
-    return any(a_i > b_i for a_i, b_i in zip(a, b))
+    for a_i, b_i in zip(a, b):
+        if a_i > b_i:
+            return True
+        if a_i < b_i:
+            return False
+    return False
 
 class FloatSeqDict[K: tuple[float, ...], V]:
 
@@ -36,7 +46,7 @@ class FloatSeqDict[K: tuple[float, ...], V]:
             mid = (a + b) // 2
             if eq_with_eps(self._floats[mid], key, self._eps):
                 return (mid, True)
-            elif lt_unsafe(self._floats[mid], key):
+            elif gt_unsafe(self._floats[mid], key):
                 b = mid
             else:
                 a = mid + 1
@@ -61,6 +71,13 @@ class FloatSeqDict[K: tuple[float, ...], V]:
         else:
             self._floats.insert(index, key)
             self._data.insert(index, value)
+
+    def pop_min(self) -> tuple[K, V] | None:
+        if len(self) == 0:
+            return None
+        k = self._floats.pop(0)
+        v = self._data.pop(0)
+        return (k, v)
 
     def setdefault(self, key: K, default: V):
         index, existed = self._search(key)
