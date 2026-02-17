@@ -308,8 +308,8 @@ if __name__ == '__main__':
     cv.add_line(100, 100, 100, 0, Styles.RawEdge, 2)
     cv.add_line(100, 0, 0, 0, Styles.RawEdge, 3)
 
-    cv.add_face(0, 0, 100, 0, 100, 100, style=Styles.Face, userdata=5)
-    cv.add_face(0, 0, 0, 100, 100, 100, style=Styles.Face, userdata=6)
+    cv.add_face((0, 0), (100, 0), (100, 100), style=Styles.Face, userdata=5)
+    cv.add_face((0, 0), (0, 100), (100, 100), style=Styles.Face, userdata=6)
 
     cv.add_line(0, 0, 100, 100, Styles.Mountain, 4)
 

@@ -2,6 +2,7 @@ from tkinter import Tk, Menu, StringVar
 from tkinter.ttk import Frame, Radiobutton, Separator, Scrollbar, Label
 from tkinter.messagebox import Message
 from tkinter import filedialog
+import ctypes
 
 from threading import Thread
 
@@ -11,7 +12,7 @@ from .components import *
 from .command_protocol import *
 from common.connection import Connection, create_connection
 
-from model.state import State
+import model
 
 from ._path import PROJECT_DIRECTORY
 
@@ -25,11 +26,18 @@ class Application(Tk):
         super().__init__()
         self.title("Origami Diagrammer")
         self.geometry('1000x700')
-        self.state = State()
+
+    def set_high_dip(self):
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        scale_factor=ctypes.windll.shcore.GetScaleFactorForDevice(0)
+        self.tk.call('tk', 'scaling', scale_factor/75)
 
     def load(self):
+        self.set_high_dip()
         self.load_images()
         self.setup_ui()
+        self.hint_panel1.push_message("MAIN")
+        self.hint_panel2.push_message("ready")
 
     def load_images(self):
         path = PROJECT_DIRECTORY / 'assets'
@@ -84,7 +92,7 @@ class Application(Tk):
         menu_file = Menu(menu, tearoff=False)
         menu_file.add_command(label="open", accelerator='Ctrl+O')
         menu_from = Menu(menu_file, tearoff=False)
-        menu_from.add_command(label="fold file", command=self.load_fold_file)
+        menu_from.add_command(label="fold file") #, command=self.load_fold_file)
         menu_file.add_cascade(label="from", menu=menu_from)
         menu.add_cascade(label="file", menu=menu_file)
 
@@ -116,7 +124,7 @@ class Application(Tk):
         self.lbl_step.pack(side='left', padx=5, pady=2)
         # ------------------------------workspace------------------------------
         self.workspace = Frame(self)
-        self.workspace.pack(side='bottom', fill='both', expand=True)
+        self.workspace.pack(side='top', fill='both', expand=True)
         self.workspace.grid_rowconfigure(0, weight=1)
         self.workspace.grid_columnconfigure(0, weight=1)
         # ------------------------------workspace > canvas------------------------------
@@ -124,26 +132,21 @@ class Application(Tk):
         self.cv.grid(row=0, column=0, sticky='nsew')
         self.cv.enable_drag_scroll()
 
-        self.srl_y = Scrollbar(self.workspace, orient='vertical', command=self.cv.yview)
-        self.cv['yscrollcommand'] = self.srl_y.set
-        self.srl_y.grid(row=0, column=1, sticky='ns')
+        # self.srl_y = Scrollbar(self.workspace, orient='vertical', command=self.cv.yview)
+        # self.cv['yscrollcommand'] = self.srl_y.set
+        # self.srl_y.grid(row=0, column=1, sticky='ns')
 
-        self.srl_x = Scrollbar(self.workspace, orient='horizontal', command=self.cv.xview)
-        self.cv['xscrollcommand'] = self.srl_x.set
-        self.srl_x.grid(row=1, column=0, sticky='we')
-        # ------------------------------workspace > hint------------------------------
-        self.hint_panel = HintPanel(self.workspace)
-        self.hint_panel.place(x=300, y=20)
-        self.hint_panel.lower()
-        self.hint_panel.hand['cursor'] = 'fleur'
-        bind_drag(self.hint_panel, self.hint_panel.hand)
-        #---------------------------------------- workspace > logging ----------------------------------------
-        self.logging_panel = LoggingPanel(self.workspace)
-        self.logging_panel.place(x=600, y=20)
-        self.logging_panel.lower()
-        self.logging_panel.hand['cursor'] = 'fleur'
-        bind_drag(self.logging_panel, self.logging_panel.hand)
-        state_logger.addHandler(self.logging_panel.stream_handler)
+        # self.srl_x = Scrollbar(self.workspace, orient='horizontal', command=self.cv.xview)
+        # self.cv['xscrollcommand'] = self.srl_x.set
+        # self.srl_x.grid(row=1, column=0, sticky='we')
+        #---------------------------------------- statusbar ----------------------------------------
+        statusbar = Frame(self)
+        statusbar.pack(side='bottom', fill='x')
+
+        self.hint_panel1 = HintPanel(statusbar)
+        self.hint_panel1.pack(side='left', padx=2, pady=2)
+        self.hint_panel2 = HintPanel(statusbar)
+        self.hint_panel2.pack(side='left', padx=2, pady=2)
         # ------------------------------workspace > parameter panel------------------------------
         self.parameter_panel = ParameterPanel(self.workspace)
         self.parameter_panel.place(x=700, y=300)
@@ -159,22 +162,19 @@ class Application(Tk):
             (
                 "basic_folds::2",
                 "fold a point to point",
-                lambda: self._execute_command("fold a point to point", basic_folds.point_to_point)
+                lambda: self._execute_model_edit_command("fold a point to point", basic_folds.point_to_point)
             )
         )
 
-    def _execute_command(self, name: str, command: ModelEditCommand):
-        _CommandHandler(self, name, command).start()
+    def _execute_model_edit_command(self, name: str, command: ModelEditCommand):
+        _ModelEditCommandHandler(self, name, command).start()
 
-    def load_fold_file(self):
-        path = filedialog.askopenfilename(parent=self, title="Pick a fold file", filetypes=[('fold file', '*.fold')])
-        self.logging_panel.stream_handler.delete('1.0', 'end')
-        self.logging_panel.tkraise()
-        self.state = State.load_from_fold_file(path)
-        #self.logging_panel.lower()
-        self.cv.load_state(self.state)
+    # def load_fold_file(self):
+    #     path = filedialog.askopenfilename(parent=self, title="Pick a fold file", filetypes=[('fold file', '*.fold')])
+    #     self.state = State.load_from_fold_file(path)
+    #     self.cv.load_state(self.state)
 
-class _CommandHandler(Thread):
+class _ModelEditCommandHandler(Thread):
 
     def __init__(self, window: Application, name: str, command: ModelEditCommand):
         super().__init__()
@@ -194,7 +194,6 @@ class _CommandHandler(Thread):
         self.window.command_panel.enable()
         self.window.parameter_panel.lower()
         self.window.parameter_panel.clear_editor()
-        self.window.hint_panel.set(None)
 
     def run(self):
         self._enter()
@@ -206,7 +205,7 @@ class _CommandHandler(Thread):
                 r = self.conn.recv()
                 if isinstance(r, RequestParameters): self.handle_parameter_request(r)
                 elif isinstance(r, RequestItem): self.handle_item_request(r)
-                elif isinstance(r, State): todo()
+                #elif isinstance(r, State): todo()
                 elif isinstance(r, CommandCollapse): raise RuntimeError("The command thread collapse.")
                 else: raise RuntimeError("The command thread sent unexpected data.")
         except BaseException as err:
