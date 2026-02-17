@@ -136,6 +136,7 @@ class Segment(NamedTuple):
 # Straight line
 #######################################################################################################################
 
+# FIXME: This is not one-to-one mapping.
 class StraightLine(NamedTuple):
     """Straight line class.
 

@@ -97,7 +97,7 @@ class CanvasPlus[U](Canvas):
         self.mapper[userdata] = item_id
         self.mapper_inverse[item_id] = (userdata, style)
 
-    def add_face(self, *coords: float, style: IntFlag, userdata: U):
+    def add_face(self, *coords: tuple[float, float], style: IntFlag, userdata: U):
         item_id = self.create_polygon(*coords, **self.style[style].normal)
         self.mapper[userdata] = item_id
         self.mapper_inverse[item_id] = (userdata, style)

@@ -1,21 +1,18 @@
-from tkinter.ttk import Frame, Label
+from typing import Literal
+from tkinter.ttk import Label
 
 __all__ = ('HintPanel', )
 
-class HintPanel(Frame):
+class HintPanel(Label):
+
+    COLORS = {
+        'info': 'black',
+        'error': 'red',
+    }
 
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent, **kwargs)
 
-        self.hand = Label(self, text="※")
-        self.hand.pack(side='left', padx=(5, 2), pady=2)
-
-        self._lbl = Label(self)
-        self._lbl.pack(side='right', fill='x', padx=(2, 5), pady=2)
-
-    def set(self, string: str | None):
-        if string is None:
-            self.lower()
-        elif string:
-            self._lbl['text'] = string
-            self.tkraise()
+    def push_message(self, message: str, level: Literal['info', 'error'] = 'info'):
+        self['text'] = message
+        self['foreground'] = self.COLORS.get(level, 'black')

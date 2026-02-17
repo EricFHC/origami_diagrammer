@@ -1,6 +1,6 @@
 from __future__ import annotations
 from widgets import CanvasPlus, ItemStyleOfState, ItemStyleCommon
-from model import State, LineType
+from model.state.definition import CreasePattern, LineType
 from enum import IntFlag, auto
 
 class Style(IntFlag):
@@ -57,14 +57,14 @@ class StateRenderCanvas(CanvasPlus):
             selected_hover=ItemStyleCommon().into_dict(),
         ).auto_complete()
 
-    def load_state(self, state: State):
+    def load_crease_pattern(self, cp: CreasePattern):
         self.clear_selection()
         self.delete('all')
 
-        for i, f in state.draw_object_face():
+        for i, f, _ in cp.all_faces_with_data():
             self.add_face(*f, style=Style.FaceWhite, userdata=i)
 
-        for i, p1, p2, line_type in state.draw_object_lines():
+        for i, (p1, p2), line_type in cp.all_edges_with_data():
             style = {
                 LineType.Mountain: Style.Mountain,
                 LineType.Valley: Style.Valley,
@@ -72,7 +72,7 @@ class StateRenderCanvas(CanvasPlus):
             }[line_type]
             self.add_line(p1.x, p1.y, p2.x, p2.y, style=style, userdata=i)
 
-        for i, p in state.draw_object_points():
+        for i, p, _ in cp.all_vertices_with_data():
             self.add_point(p.x, p.y, 2, style=Style.Vertex, userdata=i)
 
         self.zoom(400.)
