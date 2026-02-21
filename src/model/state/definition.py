@@ -3,6 +3,10 @@ from enum import IntFlag, auto
 from ..geometry import *
 from ..dcel import *
 
+__all__ = (
+    'LineType', 'CreasePattern', 'State'
+)
+
 class LineType(IntFlag):
 
     RawEdge = auto()

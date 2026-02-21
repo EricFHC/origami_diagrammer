@@ -1,25 +1,25 @@
 from typing import cast
 from common import Connection, Option, Some, Cell
 from widgets import ChoiceEditor
-from app.command_protocol import RequestItem, RequestParameters, ModelEditConnection
-from model import *
+from app.command_protocol import CommandHandler
+from model.state.definition import State, VertexId
 
-def point_to_point(conn: ModelEditConnection):
-    state = cast(State, conn.recv())
+async def point_to_point(handler: CommandHandler):
+    #state = cast(State, conn.recv())
 
-    p1 = cast(VertexId, conn.send_and_wait(RequestItem("Select a vertex.", by_type=Option(Some('vertex')))))
-    p2 = cast(VertexId, conn.send_and_wait(RequestItem("Select another vertex.", by_type=Option(Some('vertex')))))
+    p1 = await handler.request_item_by_type("Select a vertex.", 'vertex')
+    p2 = await handler.request_item_by_type("Select another vertex.", 'vertex')
 
     is_valley = Cell(True)
 
-    conn.send_and_wait(RequestParameters({
+    await handler.request_parameters({
         "M/V": (ChoiceEditor[bool](
             is_valley,
             lambda x: "valley" if x else "mountain",
             lambda x: Option({"valley": Some(True), "mountain": Some(False)}.get(x)),
             ("mountain", "valley")
         ), False)
-    }))
+    })
 
     # bind parameter changes, and change the folding info and state.
     def f():

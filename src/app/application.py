@@ -1,24 +1,30 @@
-from tkinter import Tk, Menu, StringVar
-from tkinter.ttk import Frame, Radiobutton, Separator, Scrollbar, Label
-from tkinter.messagebox import Message
-from tkinter import filedialog
-import ctypes
-
-from threading import Thread
-
-from widgets import bind_drag
-from .components import *
-
-from .command_protocol import *
-from common.connection import Connection, create_connection
-
-import model
+from typing import Generator, Any, overload, Literal
 
 from ._path import PROJECT_DIRECTORY
 
-from . import assets
+from tkinter import Tk, Menu, StringVar
+from tkinter.ttk import Frame, Radiobutton, Separator, Scrollbar, Label, Notebook
+from tkinter import Frame
+from tkinter.messagebox import Message
+from tkinter import filedialog
 
-from .commands import basic_folds
+from . import assets
+import ctypes
+from .styling import set_style
+
+from threading import Thread
+import asyncio
+from asyncio import Future
+from common.connection import Connection, create_connection
+from .command_protocol import *
+from logging import Logger
+
+from widgets import bind_drag
+from widgets.editor import Editor
+from .components import *
+
+from model.state import definition as md
+from .commands import basic_folds, file_operations
 
 class Application(Tk):
 
@@ -26,6 +32,7 @@ class Application(Tk):
         super().__init__()
         self.title("Origami Diagrammer")
         self.geometry('1000x700')
+        self.command_runner = _CommandRunner(self)
 
     def set_high_dip(self):
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -35,9 +42,17 @@ class Application(Tk):
     def load(self):
         self.set_high_dip()
         self.load_images()
+        set_style()
+
         self.setup_ui()
         self.hint_panel1.push_message("MAIN")
         self.hint_panel2.push_message("ready")
+
+        self.protocol('WM_DELETE_WINDOW', self.exit)
+        self.command_runner.start()
+
+    def exit(self):
+        self.destroy()
 
     def load_images(self):
         path = PROJECT_DIRECTORY / 'assets'
@@ -92,7 +107,7 @@ class Application(Tk):
         menu_file = Menu(menu, tearoff=False)
         menu_file.add_command(label="open", accelerator='Ctrl+O')
         menu_from = Menu(menu_file, tearoff=False)
-        menu_from.add_command(label="fold file") #, command=self.load_fold_file)
+        menu_from.add_command(label="fold file", command=self.load_fold_file)
         menu_file.add_cascade(label="from", menu=menu_from)
         menu.add_cascade(label="file", menu=menu_file)
 
@@ -123,12 +138,26 @@ class Application(Tk):
         self.lbl_step = Label(toolbar, text="step: 0")
         self.lbl_step.pack(side='left', padx=5, pady=2)
         # ------------------------------workspace------------------------------
-        self.workspace = Frame(self)
+        self.workspace = Notebook(self, style='workspace.TNotebook')
         self.workspace.pack(side='top', fill='both', expand=True)
-        self.workspace.grid_rowconfigure(0, weight=1)
-        self.workspace.grid_columnconfigure(0, weight=1)
-        # ------------------------------workspace > canvas------------------------------
-        self.cv = StateRenderCanvas(self.workspace, bg='white')
+
+        self.frm_edit = Frame(self.workspace)
+        self.setup_ui_edit(self.frm_edit)
+        self.workspace.add(self.frm_edit, sticky='nsew')
+        #---------------------------------------- statusbar ----------------------------------------
+        statusbar = Frame(self)
+        statusbar.pack(side='bottom', fill='x')
+
+        self.hint_panel1 = HintPanel(statusbar)
+        self.hint_panel1.pack(side='left', padx=2, pady=2)
+        self.hint_panel2 = HintPanel(statusbar)
+        self.hint_panel2.pack(side='left', padx=2, pady=2)
+
+    def setup_ui_edit(self, frm: Frame):
+        # ------------------------------canvas------------------------------
+        frm.grid_rowconfigure(0, weight=1)
+        frm.grid_columnconfigure(0, weight=1)
+        self.cv = FoldedStateRender(frm, bg='white')
         self.cv.grid(row=0, column=0, sticky='nsew')
         self.cv.enable_drag_scroll()
 
@@ -139,22 +168,17 @@ class Application(Tk):
         # self.srl_x = Scrollbar(self.workspace, orient='horizontal', command=self.cv.xview)
         # self.cv['xscrollcommand'] = self.srl_x.set
         # self.srl_x.grid(row=1, column=0, sticky='we')
-        #---------------------------------------- statusbar ----------------------------------------
-        statusbar = Frame(self)
-        statusbar.pack(side='bottom', fill='x')
 
-        self.hint_panel1 = HintPanel(statusbar)
-        self.hint_panel1.pack(side='left', padx=2, pady=2)
-        self.hint_panel2 = HintPanel(statusbar)
-        self.hint_panel2.pack(side='left', padx=2, pady=2)
-        # ------------------------------workspace > parameter panel------------------------------
-        self.parameter_panel = ParameterPanel(self.workspace)
+        self.cv_cp = CreasePatternRender(self.cv, width='5c', height='5c')
+        self.cv_cp.pack(side='top', anchor='e', padx=5, pady=5)
+        # ------------------------------parameter panel------------------------------
+        self.parameter_panel = ParameterPanel(frm)
         self.parameter_panel.place(x=700, y=300)
         self.parameter_panel.lower()
         self.parameter_panel.lbl_name['cursor'] = 'fleur'
         bind_drag(self.parameter_panel, self.parameter_panel.lbl_name)
-        # ------------------------------workspace > commands------------------------------
-        self.command_panel = CommandPanel(self.workspace)
+        # ------------------------------commands------------------------------
+        self.command_panel = CommandPanel(frm)
         self.command_panel.place(x=20, y=20)
 
         self.command_panel.add(
@@ -162,71 +186,118 @@ class Application(Tk):
             (
                 "basic_folds::2",
                 "fold a point to point",
-                lambda: self._execute_model_edit_command("fold a point to point", basic_folds.point_to_point)
+                lambda: self.command_runner.run_command(basic_folds.point_to_point),
             )
         )
 
-    def _execute_model_edit_command(self, name: str, command: ModelEditCommand):
-        _ModelEditCommandHandler(self, name, command).start()
+    def load_fold_file(self):
+        path = filedialog.askopenfilename(parent=self, title="Pick a fold file", filetypes=[('fold file', '*.fold')])
+        if not path:
+            return
+        async def command():
+            result = await file_operations.load_fold_file_cp(path)
+            cp = await result
+            self.cv.delete('all')
+            self.cv.load_crease_pattern(cp)
+            self.cv.zoom(400)
+            self.cv.enable_selection_of_style(FoldedStateStyle.FaceWhite)
+            self.cv_cp.delete('all')
+            self.cv_cp.load_crease_pattern(cp)
+            self.cv_cp.adjust_to_size(5, 5)
+        asyncio.run_coroutine_threadsafe(command(), self.command_runner.loop)
 
-    # def load_fold_file(self):
-    #     path = filedialog.askopenfilename(parent=self, title="Pick a fold file", filetypes=[('fold file', '*.fold')])
-    #     self.state = State.load_from_fold_file(path)
-    #     self.cv.load_state(self.state)
+class _CommandRunner(Thread):
 
-class _ModelEditCommandHandler(Thread):
-
-    def __init__(self, window: Application, name: str, command: ModelEditCommand):
-        super().__init__()
-        self.window = window
-        self.command_name = name
-        c1, c2 = create_connection()
-        self.conn = c1
-        self.command = command
-        self.command_conn = c2
-
-    def _enter(self):
-        self.window.command_panel.disable()
-        self.window.parameter_panel.set_name(self.command_name)
-        self.window.parameter_panel.tkraise()
-
-    def _exit(self):
-        self.window.command_panel.enable()
-        self.window.parameter_panel.lower()
-        self.window.parameter_panel.clear_editor()
+    def __init__(self, app: Application):
+        super().__init__(daemon=True)
+        self.app = app
+        self.handler = _AppCommandHandler(app)
 
     def run(self):
-        self._enter()
-        try:
-            worker = Thread(target=SafeCommand(self.command), args=(self.command_conn, ))
-            worker.start()
-            self.conn.send(self.window.state)
-            while worker.is_alive():
-                r = self.conn.recv()
-                if isinstance(r, RequestParameters): self.handle_parameter_request(r)
-                elif isinstance(r, RequestItem): self.handle_item_request(r)
-                #elif isinstance(r, State): todo()
-                elif isinstance(r, CommandCollapse): raise RuntimeError("The command thread collapse.")
-                else: raise RuntimeError("The command thread sent unexpected data.")
-        except BaseException as err:
-            Message(self.window, icon='info', type='ok', message=f"An unexpected error has occurred. Details:\n{err}").show()
-        finally:
-            self._exit()
+        self.loop = asyncio.new_event_loop()
+        self.loop.run_forever()
 
-    def handle_parameter_request(self, request: RequestParameters):
-        for name, (editor, immediate) in request.parameters.items():
-            self.window.parameter_panel.add_editor(name, editor)
+    def run_command[T](self, command: Command[T]):
+        async def task():
+            self.enter()
+            res = await command(self.handler)
+            self.exit()
+        asyncio.run_coroutine_threadsafe(task(), self.loop)
 
-            if not immediate: continue
-            if not editor.support_wait(): raise RuntimeError()
+    def enter(self):
+        self.app.hint_panel1.push_message("COMMAND")
+        self.app.hint_panel2.push_message("")
+        self.app.command_panel.disable()
 
-            v = StringVar()
-            t = lambda _: v.set("")
-            editor.on_change.bind(t)
-            self.window.wait_variable(v)
-            editor.on_change.unbind(t)
+    def exit(self):
+        self.app.hint_panel1.push_message("MAIN")
+        self.app.command_panel.enable()
 
-        self.conn.send(None)
+class _AppCommandHandler:
 
-    def handle_item_request(self, request: RequestItem):
+    def __init__(self, app: Application):
+        self.app = app
+
+    def register_logger(self, logger: Logger):
         pass
+
+    async def request_parameters(self, request: dict[str, tuple[Editor, bool]]) -> Future[None]:
+        def task():
+            for name, (editor, immediate) in request.items():
+                self.app.parameter_panel.add_editor(name, editor)
+
+                if not immediate: continue
+                if not editor.support_wait(): raise RuntimeError()
+
+                v = StringVar()
+                t = lambda _: v.set("")
+                editor.on_change.bind(t)
+                self.app.wait_variable(v)
+                editor.on_change.unbind(t)
+
+        loop = asyncio.get_running_loop()
+        return loop.run_in_executor(None, task)
+
+    @overload
+    async def request_item_from_ids(self, hint: str, ids: tuple[md.VertexId, ...]) -> Future[md.VertexId]: ...
+
+    @overload
+    async def request_item_from_ids(self, hint: str, ids: tuple[md.EdgeId, ...]) -> Future[md.EdgeId]: ...
+
+    @overload
+    async def request_item_from_ids(self, hint: str, ids: tuple[md.FaceId, ...]) -> Future[md.FaceId]: ...
+
+    async def request_item_from_ids(self, hint: str, ids: tuple[md.VertexId | md.EdgeId | md.FaceId, ...]) -> Future:
+        def task():
+            self.app.hint_panel2.push_message(hint)
+            self.app.cv.enable_selection(*ids)
+            id = self.app.cv.wait_selection()
+            self.app.cv.disable_selection_all()
+            return id
+
+        loop = asyncio.get_running_loop()
+        return loop.run_in_executor(None, task)
+
+    @overload
+    async def request_item_by_type(self, hint: str, tp: Literal['vertex']) -> Future[md.VertexId]: ...
+
+    @overload
+    async def request_item_by_type(self, hint: str, tp: Literal['line']) -> Future[md.EdgeId]: ...
+
+    @overload
+    async def request_item_by_type(self, hint: str, tp: Literal['face']) -> Future[md.FaceId]: ...
+
+    async def request_item_by_type(self, hint: str, tp: Literal['vertex', 'line', 'face']) -> Future:
+        def task():
+            self.app.hint_panel2.push_message(hint)
+            self.app.cv.enable_selection_of_style({
+                'vertex': FoldedStateStyle.Vertex,
+                'line': FoldedStateStyle.Crease,
+                'face': FoldedStateStyle.Face
+            }[tp])
+            id = self.app.cv.wait_selection()
+            self.app.cv.disable_selection_all()
+            return id
+
+        loop = asyncio.get_running_loop()
+        return loop.run_in_executor(None, task)

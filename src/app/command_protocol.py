@@ -1,40 +1,39 @@
-from typing import Protocol, runtime_checkable, Literal
+from typing import Protocol, runtime_checkable, Literal, overload, Callable, Awaitable, Coroutine, Any
 from dataclasses import dataclass, field
+from asyncio import Future
+from logging import Logger
 from common import Connection, Option, Some
 from widgets import Editor
-from model import *
+from model.state import definition as d
 
-@runtime_checkable
-class Command[S, R](Protocol):
+__all__ = ('CommandHandler', 'Command')
 
-    def __call__(self, conn: Connection[S, R]) -> None:
-        pass
+class CommandHandler(Protocol):
 
-class CommandCollapse: pass
+    def register_logger(self, logger: Logger): ...
 
-@dataclass
-class SafeCommand[S, R]:
+    @overload
+    async def request_item_by_type(self, hint: str, tp: Literal['vertex']) -> Future[d.VertexId]: ...
 
-    command: Command[S, R]
+    @overload
+    async def request_item_by_type(self, hint: str, tp: Literal['line']) -> Future[d.EdgeId]: ...
 
-    def __call__(self, connection: Connection[S | CommandCollapse, R]):
-        try:
-            self.command(connection)
-        except BaseException as err:
-            connection.send(CommandCollapse())
+    @overload
+    async def request_item_by_type(self, hint: str, tp: Literal['face']) -> Future[d.FaceId]: ...
 
-@dataclass
-class RequestParameters:
+    async def request_item_by_type(self, hint: str, tp: Literal['vertex', 'line', 'face']) -> Future: ...
 
-    parameters: dict[str, tuple[Editor, bool]] = field(default_factory=dict)
+    @overload
+    async def request_item_from_ids(self, hint: str, ids: tuple[d.VertexId, ...]) -> Future[d.VertexId]: ...
 
-@dataclass
-class RequestItem:
+    @overload
+    async def request_item_from_ids(self, hint: str, ids: tuple[d.EdgeId, ...]) -> Future[d.EdgeId]: ...
 
-    hint: str = ""
-    from_ids: Option[tuple[int, ...]] = Option(None)
-    by_type: Option[Literal['vertex', 'line', 'face']] = Option(None)
+    @overload
+    async def request_item_from_ids(self, hint: str, ids: tuple[d.FaceId, ...]) -> Future[d.FaceId]: ...
 
-type ModelEditConnection = Connection[RequestParameters | RequestItem | State, State | VertexId]
-type ModelEditCommand = Command[RequestParameters | RequestItem | State, State | VertexId]
-type ModelLoadCommand = Command[State, str]
+    async def request_item_from_ids(self, hint: str, ids) -> Future: ...
+
+    async def request_parameters(self, request: dict[str, tuple[Editor, bool]]) -> Future[None]: ...
+
+type Command[T] = Callable[[CommandHandler], Coroutine]

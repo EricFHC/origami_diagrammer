@@ -1,9 +1,10 @@
 from typing import TypedDict, NotRequired
 from enum import IntFlag
 from dataclasses import dataclass
-from tkinter import Canvas, Event
+from tkinter import Canvas, Event, IntVar
+from common.callback import Callbacks
 
-__all__ = ('ItemStyleCommon', 'ItemStyleOfState', 'CanvasPlus')
+__all__ = ('ItemStyleCommon', 'ItemStyleOfState', 'CanvasSelectionChild', 'CanvasSelectionControl')
 
 class ItemStyleOption(TypedDict):
 
@@ -77,30 +78,28 @@ class CanvasPlus[U](Canvas):
         self.style: dict[IntFlag, ItemStyleOfState] = {}
 
         self.mapper: dict[U, int] = {}
-        self.mapper_inverse: dict[int, tuple[U, IntFlag]] = {}
-
-        self.permit_user_deselect = False
-        self.selection: set[int] = set()
-        self._selection_change: int = -1
-        self.selection_change: U
-        self._init_selection()
+        self.mapper_inverse: dict[int, U] = {}
+        self.style_record: dict[U, IntFlag] = {}
 
     # ------------------------------Draw------------------------------
 
     def add_point(self, x: float, y: float, r: float, style: IntFlag, userdata: U):
-        item_id = self.create_oval(x-r, y-r, x+r, y+r, **self.style[style].normal)
+        item_id = self.create_oval(x-r, y-r, x+r, y+r, **self.style[style].normal, outline='')
         self.mapper[userdata] = item_id
-        self.mapper_inverse[item_id] = (userdata, style)
+        self.mapper_inverse[item_id] = userdata
+        self.style_record[userdata] = style
 
     def add_line(self, x1: float, y1: float, x2: float, y2: float, style: IntFlag, userdata: U):
-        item_id = self.create_line(x1, y1, x2, y2, **self.style[style].normal)
+        item_id = self.create_line(x1, y1, x2, y2, **self.style[style].normal, tags=('line', ))
         self.mapper[userdata] = item_id
-        self.mapper_inverse[item_id] = (userdata, style)
+        self.mapper_inverse[item_id] = userdata
+        self.style_record[userdata] = style
 
     def add_face(self, *coords: tuple[float, float], style: IntFlag, userdata: U):
         item_id = self.create_polygon(*coords, **self.style[style].normal)
         self.mapper[userdata] = item_id
-        self.mapper_inverse[item_id] = (userdata, style)
+        self.mapper_inverse[item_id] = userdata
+        self.style_record[userdata] = style
 
     def zoom(self, factor: float):
         """Note: Do not use this method too often, which may cause precise issues."""
@@ -117,6 +116,62 @@ class CanvasPlus[U](Canvas):
                 r_y = (bottom - top) * 0.5
                 self.coords(item, (x-r_x, y-r_y, x+r_x, y+r_y))
 
+    def adjust_to_size(self, ipadx, ipady):
+        # Zoom.
+        # According to tcl/tk manual, command `canvas bbox`: 'The return value may overestimate the actual bounding box
+        # by a few pixels.' So we will zoom large first so that the relevant error will be small, which also brings a
+        # by-benefit that the relevant large radius of vertices can be ignored, given that initial coordinates are
+        # often limited in a range of [0, 1].
+        self.zoom(400)
+        ipadx = self.winfo_fpixels(ipadx)
+        ipady = self.winfo_fpixels(ipady)
+        x1, y1, x2, y2 = self.bbox('line')
+        self.zoom(min(self.winfo_width()-2*ipadx, self.winfo_height()-2*ipady) / min(x2-x1, y2-y1)) # TODO: Seems not good enough.
+        # Translate.
+        x1, y1, x2, y2 = self.bbox('line')
+        x = (x1 + x2) / 2
+        y = (y1 + y2) / 2
+        target_x = self.winfo_width() / 2
+        target_y = self.winfo_height() / 2
+        self.move('all', target_x-x, target_y-y)
+
+    # ------------------------------Drag Scroll------------------------------
+
+    def enable_drag_scroll(self, gain: int = 1):
+
+        def on_drag(e: Event):
+            self.scan_dragto(e.x_root, e.y_root, gain=gain)
+            self['cursor'] = 'fleur'
+
+        def on_release(_):
+            self['cursor'] = 'arrow'
+
+        self.bind('<Button-1>', lambda e: self.scan_mark(e.x_root, e.y_root), add='+')
+        self.bind('<B1-Motion>', on_drag, add='+')
+        self.bind('<ButtonRelease-1>', on_release, add='+')
+
+# TODO: Minor
+# The conflict between drag_scroll and selection.
+
+class CanvasSelectionControl[U](CanvasPlus[U]):
+
+    def __init__(self, master=None, **kwargs):
+        super().__init__(master, **kwargs)
+
+        self.permit_user_deselect = False
+        self.selection: set[int] = set()
+        self._selection_change: int = -1
+        self.selection_change: U
+
+        self.callback_hover_selected: Callbacks[U] = Callbacks()
+        self.callback_hover_normal: Callbacks[U] = Callbacks()
+        self.callback_select: Callbacks[U] = Callbacks()
+        self.callback_deselect: Callbacks[U] = Callbacks()
+        self.callback_leave_hover_selected: Callbacks[U] = Callbacks()
+        self.callback_leave_hover_normal: Callbacks[U] = Callbacks()
+
+        self._init_selection()
+
     # ------------------------------Selecting------------------------------
 
     # Bind all methods for selecting.
@@ -126,38 +181,46 @@ class CanvasPlus[U](Canvas):
         def on_enter(_):
             nonlocal hover_id
             hover_id = self.find_withtag('current')[0]
-            style = self.style[self.mapper_inverse[hover_id][1]]
+            user_data = self.mapper_inverse[hover_id]
+            style = self.style[self.style_record[user_data]]
             if hover_id in self.selection:
                 self.itemconfigure(hover_id, **style.selected_hover)
+                self.callback_hover_selected.emit(user_data)
             else:
                 self.itemconfigure(hover_id, **style.hover)
+                self.callback_hover_normal.emit(user_data)
 
         def on_press(_):
             nonlocal hover_id
             # SAFETY
             # Due to the trigger order of events, `hover_id` must point to the item under the mouse.
             self._selection_change = hover_id
-            self.selection_change = self.mapper_inverse[hover_id][0]
-            style = self.style[self.mapper_inverse[hover_id][1]]
+            self.selection_change = self.mapper_inverse[hover_id]
+            style = self.style[self.style_record[self.selection_change]]
             if hover_id in self.selection:
                 if self.permit_user_deselect:
                     self.selection.remove(hover_id)
                     self.itemconfigure(hover_id, **style.hover)
-                    self.event_generate('<<Deselect>>', data=hover_id)
+                    self.event_generate('<<Deselect>>', data=self.selection_change)
+                    self.callback_deselect.emit(self.selection_change)
             else:
                 self.selection.add(hover_id)
                 self.itemconfigure(hover_id, **style.selected_hover)
-                self.event_generate('<<Select>>', data=hover_id)
+                self.event_generate('<<Select>>', data=self.selection_change)
+                self.callback_select.emit(self.selection_change)
 
         def on_leave(_):
             nonlocal hover_id
             # SAFETY
             # The same as `on_press`.(～￣▽￣)～
-            style = self.style[self.mapper_inverse[hover_id][1]]
+            user_data = self.mapper_inverse[hover_id]
+            style = self.style[self.style_record[user_data]]
             if hover_id in self.selection:
                 self.itemconfigure(hover_id, **style.selected)
+                self.callback_leave_hover_selected.emit(user_data)
             else:
                 self.itemconfigure(hover_id, **style.normal)
+                self.callback_leave_hover_normal.emit(user_data)
             hover_id = -1
 
         self.tag_bind('selectable', '<Enter>', on_enter)
@@ -166,12 +229,12 @@ class CanvasPlus[U](Canvas):
 
     def enable_selection_of_style(self, style: IntFlag):
         for i, d in self.mapper_inverse.items():
-            if d[1] in style:
+            if self.style_record[d] in style:
                 self.addtag_withtag('selectable', i)
 
     def disable_selection_of_style(self, style: IntFlag):
         for i, d in self.mapper_inverse.items():
-            if d[1] in style:
+            if self.style_record[d] in style:
                 self.dtag(i, 'selectable')
 
     def enable_selection_all(self):
@@ -193,18 +256,18 @@ class CanvasPlus[U](Canvas):
         if i in self.selection:
             return
         self.selection.add(i)
-        self.itemconfigure(i, **self.style[self.mapper_inverse[i][1]].selected)
+        self.itemconfigure(i, **self.style[self.style_record[item]].selected)
 
     def deselect(self, item: U):
         i = self.mapper[item]
         if i not in self.selection:
             return
         self.selection.remove(i)
-        self.itemconfigure(i, **self.style[self.mapper_inverse[i][1]].normal)
+        self.itemconfigure(i, **self.style[self.style_record[item]].normal)
 
     def clear_selection(self):
         for i in self.selection:
-            self.itemconfigure(i, **self.style[self.mapper_inverse[i][1]].normal)
+            self.itemconfigure(i, **self.style[self.style_record[self.mapper_inverse[i]]].normal)
 
     def wait_selection(self) -> U:
         """Wait until a new item is selected. Similar to `wait_variable`.
@@ -217,23 +280,18 @@ class CanvasPlus[U](Canvas):
         self.unbind('<<Selected>>', t)
         return self.selection_change
 
-    # ------------------------------Drag Scroll------------------------------
+class CanvasSelectionChild[U](CanvasPlus[U]):
 
-    def enable_drag_scroll(self, gain: int = 1):
+    def __init__(self, master=None, **kwargs):
+        super().__init__(master, **kwargs)
 
-        def on_drag(e: Event):
-            self.scan_dragto(e.x_root, e.y_root, gain=gain)
-            self['cursor'] = 'fleur'
-
-        def on_release(_):
-            self['cursor'] = 'arrow'
-
-        self.bind('<Button-1>', lambda e: self.scan_mark(e.x_root, e.y_root), add='+')
-        self.bind('<B1-Motion>', on_drag, add='+')
-        self.bind('<ButtonRelease-1>', on_release, add='+')
-
-# TODO: Minor
-# The conflict between drag_scroll and selection.
+    def set_parent(self, parent: CanvasSelectionControl[U]):
+        parent.callback_hover_selected.bind(lambda u: self.itemconfigure(self.mapper[u], **self.style[self.style_record[u]].selected_hover))
+        parent.callback_hover_normal.bind(lambda u: self.itemconfigure(self.mapper[u], **self.style[self.style_record[u]].hover))
+        parent.callback_deselect.bind(lambda u: self.itemconfigure(self.mapper[u], **self.style[self.style_record[u]].normal))
+        parent.callback_select.bind(lambda u: self.itemconfigure(self.mapper[u], **self.style[self.style_record[u]].selected))
+        parent.callback_leave_hover_selected.bind(lambda u: self.itemconfigure(self.mapper[u], **self.style[self.style_record[u]].selected))
+        parent.callback_leave_hover_normal.bind(lambda u: self.itemconfigure(self.mapper[u], **self.style[self.style_record[u]].normal))
 
 if __name__ == '__main__':
     from tkinter import Tk, Checkbutton, Frame, IntVar
@@ -275,7 +333,7 @@ if __name__ == '__main__':
     chk_face = Checkbutton(frame, text="face", variable=var_face, onvalue=Styles.Face, offvalue=Styles.Empty)
     chk_face.pack(side='top', anchor='w')
 
-    cv = CanvasPlus(root, background='white')
+    cv = CanvasSelectionControl(root, background='white')
     cv.pack(fill='both', expand=True, padx=5, pady=5)
 
     # TODO: A confusing bug

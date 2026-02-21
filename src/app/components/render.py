@@ -1,9 +1,9 @@
 from __future__ import annotations
-from widgets import CanvasPlus, ItemStyleOfState, ItemStyleCommon
-from model.state.definition import CreasePattern, LineType
+from widgets.canvas import CanvasSelectionControl, CanvasSelectionChild, ItemStyleOfState, ItemStyleCommon
+from model.state.definition import CreasePattern, LineType, VertexId, EdgeId, FaceId
 from enum import IntFlag, auto
 
-class Style(IntFlag):
+class FoldedStateStyle(IntFlag):
 
     RawEdge = auto()
     Mountain = auto()
@@ -16,7 +16,7 @@ class Style(IntFlag):
     FaceColor= auto()
     Face = FaceColor | FaceWhite
 
-class StateRenderCanvas(CanvasPlus):
+class FoldedStateRender(CanvasSelectionControl[VertexId | EdgeId | FaceId]):
 
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent, **kwargs)
@@ -24,33 +24,33 @@ class StateRenderCanvas(CanvasPlus):
         self.set_style()
 
     def set_style(self):
-        self.style[Style.Vertex] = ItemStyleOfState(
-            normal=ItemStyleCommon(fill='black').into_dict(),
-            hover=ItemStyleCommon().into_dict(),
-            selected=ItemStyleCommon().into_dict(),
-            selected_hover=ItemStyleCommon().into_dict(),
+        self.style[FoldedStateStyle.Vertex] = ItemStyleOfState(
+            normal=ItemStyleCommon(fill='#000000').into_dict(),
+            hover=ItemStyleCommon(fill='#F39C12').into_dict(),
+            selected=ItemStyleCommon(fill='#3498DB').into_dict(),
+            selected_hover=ItemStyleCommon(fill='#F1C40F').into_dict(),
         )
 
-        self.style[Style.RawEdge] = ItemStyleOfState(
+        self.style[FoldedStateStyle.RawEdge] = ItemStyleOfState(
             normal=ItemStyleCommon(fill='black').into_dict(),
             hover=ItemStyleCommon(dash='--').into_dict(),
             selected=ItemStyleCommon(fill='purple').into_dict(),
             selected_hover=ItemStyleCommon().into_dict(),
         ).auto_complete()
-        self.style[Style.Mountain] = ItemStyleOfState(
+        self.style[FoldedStateStyle.Mountain] = ItemStyleOfState(
             normal=ItemStyleCommon(fill='red').into_dict(),
             hover=ItemStyleCommon(dash='--').into_dict(),
             selected=ItemStyleCommon(fill='purple').into_dict(),
             selected_hover=ItemStyleCommon().into_dict(),
         ).auto_complete()
-        self.style[Style.Valley] = ItemStyleOfState(
+        self.style[FoldedStateStyle.Valley] = ItemStyleOfState(
             normal=ItemStyleCommon(fill='blue').into_dict(),
             hover=ItemStyleCommon(dash='--').into_dict(),
             selected=ItemStyleCommon(fill='purple').into_dict(),
             selected_hover=ItemStyleCommon().into_dict(),
         ).auto_complete()
 
-        self.style[Style.FaceWhite] = ItemStyleOfState(
+        self.style[FoldedStateStyle.FaceWhite] = ItemStyleOfState(
             normal=ItemStyleCommon(fill='').into_dict(),
             hover=ItemStyleCommon(fill='green', stipple='gray50').into_dict(),
             selected=ItemStyleCommon().into_dict(),
@@ -58,24 +58,85 @@ class StateRenderCanvas(CanvasPlus):
         ).auto_complete()
 
     def load_crease_pattern(self, cp: CreasePattern):
-        self.clear_selection()
-        self.delete('all')
-
-        for i, f, _ in cp.all_faces_with_data():
-            self.add_face(*f, style=Style.FaceWhite, userdata=i)
+        for i, f, _ in cp.all_faces_with_data_no_infinite():
+            self.add_face(*f, style=FoldedStateStyle.FaceWhite, userdata=i)
 
         for i, (p1, p2), line_type in cp.all_edges_with_data():
             style = {
-                LineType.Mountain: Style.Mountain,
-                LineType.Valley: Style.Valley,
-                LineType.RawEdge: Style.RawEdge,
+                LineType.Mountain: FoldedStateStyle.Mountain,
+                LineType.Valley: FoldedStateStyle.Valley,
+                LineType.RawEdge: FoldedStateStyle.RawEdge,
             }[line_type]
             self.add_line(p1.x, p1.y, p2.x, p2.y, style=style, userdata=i)
 
         for i, p, _ in cp.all_vertices_with_data():
-            self.add_point(p.x, p.y, 2, style=Style.Vertex, userdata=i)
+            self.add_point(p.x, p.y, 4, style=FoldedStateStyle.Vertex, userdata=i)
 
-        self.zoom(400.)
+class CreasePatternStyle(IntFlag):
+
+    RawEdge = auto()
+    Mountain = auto()
+    Valley = auto()
+
+    Vertex = auto()
+
+    Face = auto()
+
+class CreasePatternRender(CanvasSelectionChild):
+
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent, **kwargs)
+
+        self.set_style()
+
+    def set_style(self):
+        self.style[CreasePatternStyle.Vertex] = ItemStyleOfState(
+            normal=ItemStyleCommon(fill='black').into_dict(),
+            hover=ItemStyleCommon().into_dict(),
+            selected=ItemStyleCommon().into_dict(),
+            selected_hover=ItemStyleCommon().into_dict(),
+        )
+
+        self.style[CreasePatternStyle.RawEdge] = ItemStyleOfState(
+            normal=ItemStyleCommon(fill='black').into_dict(),
+            hover=ItemStyleCommon(dash='--').into_dict(),
+            selected=ItemStyleCommon(fill='purple').into_dict(),
+            selected_hover=ItemStyleCommon().into_dict(),
+        ).auto_complete()
+        self.style[CreasePatternStyle.Mountain] = ItemStyleOfState(
+            normal=ItemStyleCommon(fill='red').into_dict(),
+            hover=ItemStyleCommon(dash='--').into_dict(),
+            selected=ItemStyleCommon(fill='purple').into_dict(),
+            selected_hover=ItemStyleCommon().into_dict(),
+        ).auto_complete()
+        self.style[CreasePatternStyle.Valley] = ItemStyleOfState(
+            normal=ItemStyleCommon(fill='blue').into_dict(),
+            hover=ItemStyleCommon(dash='--').into_dict(),
+            selected=ItemStyleCommon(fill='purple').into_dict(),
+            selected_hover=ItemStyleCommon().into_dict(),
+        ).auto_complete()
+
+        self.style[CreasePatternStyle.Face] = ItemStyleOfState(
+            normal=ItemStyleCommon(fill='white').into_dict(),
+            hover=ItemStyleCommon(fill='green', stipple='gray50').into_dict(),
+            selected=ItemStyleCommon().into_dict(),
+            selected_hover=ItemStyleCommon().into_dict(),
+        ).auto_complete()
+
+    def load_crease_pattern(self, cp: CreasePattern):
+        for i, f, _ in cp.all_faces_with_data_no_infinite():
+            self.add_face(*f, style=CreasePatternStyle.Face, userdata=i)
+
+        for i, (p1, p2), line_type in cp.all_edges_with_data():
+            style = {
+                LineType.Mountain: CreasePatternStyle.Mountain,
+                LineType.Valley: CreasePatternStyle.Valley,
+                LineType.RawEdge: CreasePatternStyle.RawEdge,
+            }[line_type]
+            self.add_line(p1.x, p1.y, p2.x, p2.y, style=style, userdata=i)
+
+        for i, p, _ in cp.all_vertices_with_data():
+            self.add_point(p.x, p.y, 2, style=FoldedStateStyle.Vertex, userdata=i)
 
 # class StateRenderCanvas(CanvasPlus):
 

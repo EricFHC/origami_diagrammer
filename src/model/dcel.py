@@ -1,10 +1,26 @@
 from dataclasses import dataclass, field
+
+from model.geometry import Vec2
 from .geometry import *
 
-class VertexId(int): pass
-class EdgeId(int): pass
-class HalfEdgeId(int): pass
-class FaceId(int): pass
+__all__ = (
+    'VertexId', 'EdgeId', 'HalfEdgeId', 'FaceId',
+    'Vertex', 'Edge', 'HalfEdge', 'Face',
+    'DCEL'
+)
+
+class IdBase(int):
+
+    def __eq__(self, other) -> bool:
+        return type(self) is type(other) and int(self) == int(other)
+
+    def __hash__(self) -> int:
+        return hash((type(self), int(self)))
+
+class VertexId(IdBase): pass
+class EdgeId(IdBase): pass
+class HalfEdgeId(IdBase): pass
+class FaceId(IdBase): pass
 
 @dataclass
 class Vertex:
@@ -61,11 +77,19 @@ class DCEL[V, E, F]:
 
     def all_faces_with_data(self):
         for id, face in self.faces.items():
-            vertices: list[Vec2] = []
-            half_edge_start = face.edge0
-            current_half_edge = half_edge_start
-            while (current_half_edge := self.half_edges[current_half_edge].next) != half_edge_start:
-                v_id = self.half_edges[current_half_edge].origin
-                vertices.append(self.vertices[v_id].pos)
-            vertices.append(self.vertices[self.half_edges[half_edge_start].origin].pos)
-            yield id, tuple(vertices), self.face_data[id]
+            yield id, *self.query_face(id)
+
+    def all_faces_with_data_no_infinite(self):
+        for id, face in self.faces.items():
+            if id == FaceId(0):
+                continue
+            yield id, *self.query_face(id)
+
+    def query_face(self, face_id: FaceId) -> tuple[list[Vec2], F]:
+        vertices: list[Vec2] = []
+        half_edge_start = self.faces[face_id].edge0
+        current_half_edge = half_edge_start
+        while (current_half_edge := self.half_edges[current_half_edge].next) != half_edge_start:
+            v_id = self.half_edges[current_half_edge].origin
+            vertices.append(self.vertices[v_id].pos)
+        return vertices, self.face_data[face_id]

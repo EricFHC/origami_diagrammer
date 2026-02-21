@@ -1,6 +1,10 @@
 from typing import TypedDict, Literal
 import logging
+from ..geometry import *
+from ..dcel import *
 from .definition import *
+
+__all__ = ('logger', 'FoldFile', 'into_crease_pattern')
 
 logger = logging.getLogger(__file__)
 

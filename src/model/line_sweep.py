@@ -100,8 +100,9 @@ def calc_all_intersections[I](segments: dict[I, Segment], eps: float = 1e-7) -> 
     - duplication: The intersection of two segments is a segment.
 
     Note:
-        - Duplicated segments are not strictly collected. As long as two segments is detected duplicated, they are added
-        to a straight-line group. Thus, segments in a straight-line group may not all duplicate each other in pairs.
+        - Duplicated segments are not strictly collected. As long as two segments are detected duplicated, they are
+        added to a straight-line group. Thus, segments in a straight-line group may not all duplicate each other in
+        pairs.
         - For segments parallel with the sweep-line, segments with the same y are all grouped without further detection
         unless there is only one segment.
 
