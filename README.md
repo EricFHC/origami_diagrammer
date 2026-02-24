@@ -1,4 +1,7 @@
-# Origami Diagram
+# Origami Diagrammer
+
+> [!NOTE]
+> 高考之后继续。27届。
 
 ## Brief Introduction
 
