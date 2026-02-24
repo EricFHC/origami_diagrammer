@@ -143,7 +143,14 @@ class Application(Tk):
 
         self.frm_edit = Frame(self.workspace)
         self.setup_ui_edit(self.frm_edit)
-        self.workspace.add(self.frm_edit, sticky='nsew')
+        self.workspace.add(self.frm_edit)#, sticky='nsew')
+
+        self.frm_step = Frame(self.workspace)
+        self.setup_ui_steps_view(self.frm_step)
+        self.workspace.add(self.frm_step)#, sticky='nsew')
+
+        tab_id = {'edit': 0, 'step': 1}
+        self.var_view.trace_add('write', lambda a, b, c: self.workspace.select(tab_id[self.var_view.get()]))
         #---------------------------------------- statusbar ----------------------------------------
         statusbar = Frame(self)
         statusbar.pack(side='bottom', fill='x')
@@ -184,11 +191,47 @@ class Application(Tk):
         self.command_panel.add(
             "basic_folds::1", "7 basic folds",
             (
+                "basic_folds::1",
+                "fold through line",
+                lambda: print("Not implemented!")
+            ),
+            (
                 "basic_folds::2",
-                "fold a point to point",
+                "fold point to point",
                 lambda: self.command_runner.run_command(basic_folds.point_to_point),
-            )
+            ),
+            (
+                "basic_folds::3",
+                "fold line to line",
+                lambda: print("Not implemented!")
+            ),
+            (
+                "basic_folds::4",
+                "fold through point, perpendicular to a line",
+                lambda: print("Not implemented!")
+            ),
+            (
+                "basic_folds::5",
+                "fold point to line, through another point",
+                lambda: print("Not implemented!")
+            ),
+            (
+                "basic_folds::6",
+                "fold point to line, two set",
+                lambda: print("Not implemented!")
+            ),
+            (
+                "basic_folds::7",
+                "fold point to line, perpendicular to a line",
+                lambda: print("Not implemented!")
+            ),
         )
+
+    def setup_ui_steps_view(self, frm: Frame):
+        frm.grid_rowconfigure(0, weight=1)
+        frm.grid_columnconfigure(0, weight=1)
+        label = Label(frm, text="NOT YET!", font='-size 20 -weight bold')
+        label.grid()
 
     def load_fold_file(self):
         path = filedialog.askopenfilename(parent=self, title="Pick a fold file", filetypes=[('fold file', '*.fold')])
@@ -200,7 +243,6 @@ class Application(Tk):
             self.cv.delete('all')
             self.cv.load_crease_pattern(cp)
             self.cv.zoom(400)
-            self.cv.enable_selection_of_style(FoldedStateStyle.FaceWhite)
             self.cv_cp.delete('all')
             self.cv_cp.load_crease_pattern(cp)
             self.cv_cp.adjust_to_size(5, 5)
@@ -219,19 +261,22 @@ class _CommandRunner(Thread):
 
     def run_command[T](self, command: Command[T]):
         async def task():
-            self.enter()
+            self.app.after(0, self.enter)
             res = await command(self.handler)
-            self.exit()
+            self.app.after(0, self.exit)
         asyncio.run_coroutine_threadsafe(task(), self.loop)
 
     def enter(self):
         self.app.hint_panel1.push_message("COMMAND")
         self.app.hint_panel2.push_message("")
         self.app.command_panel.disable()
+        self.app.parameter_panel.tkraise()
 
     def exit(self):
         self.app.hint_panel1.push_message("MAIN")
+        self.app.hint_panel2.push_message("Command finished.")
         self.app.command_panel.enable()
+        self.app.parameter_panel.lower()
 
 class _AppCommandHandler:
 
@@ -241,7 +286,9 @@ class _AppCommandHandler:
     def register_logger(self, logger: Logger):
         pass
 
-    async def request_parameters(self, request: dict[str, tuple[Editor, bool]]) -> Future[None]:
+    def request_parameters(self, request: dict[str, tuple[Editor, bool]]) -> Future[None]:
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
         def task():
             for name, (editor, immediate) in request.items():
                 self.app.parameter_panel.add_editor(name, editor)
@@ -254,20 +301,24 @@ class _AppCommandHandler:
                 editor.on_change.bind(t)
                 self.app.wait_variable(v)
                 editor.on_change.unbind(t)
+            future.set_result(None)
 
+        self.app.after(0, task)
+        return future
+
+    @overload
+    def request_item_from_ids(self, hint: str, ids: tuple[md.VertexId, ...]) -> Future[md.VertexId]: ...
+
+    @overload
+    def request_item_from_ids(self, hint: str, ids: tuple[md.EdgeId, ...]) -> Future[md.EdgeId]: ...
+
+    @overload
+    def request_item_from_ids(self, hint: str, ids: tuple[md.FaceId, ...]) -> Future[md.FaceId]: ...
+
+    # FIXME
+    def request_item_from_ids(self, hint: str, ids: tuple[md.VertexId | md.EdgeId | md.FaceId, ...]) -> Future:
         loop = asyncio.get_running_loop()
-        return loop.run_in_executor(None, task)
-
-    @overload
-    async def request_item_from_ids(self, hint: str, ids: tuple[md.VertexId, ...]) -> Future[md.VertexId]: ...
-
-    @overload
-    async def request_item_from_ids(self, hint: str, ids: tuple[md.EdgeId, ...]) -> Future[md.EdgeId]: ...
-
-    @overload
-    async def request_item_from_ids(self, hint: str, ids: tuple[md.FaceId, ...]) -> Future[md.FaceId]: ...
-
-    async def request_item_from_ids(self, hint: str, ids: tuple[md.VertexId | md.EdgeId | md.FaceId, ...]) -> Future:
+        future = loop.create_future()
         def task():
             self.app.hint_panel2.push_message(hint)
             self.app.cv.enable_selection(*ids)
@@ -275,19 +326,21 @@ class _AppCommandHandler:
             self.app.cv.disable_selection_all()
             return id
 
+        self.app.after(0, task)
+        return future
+
+    @overload
+    async def request_item_by_type(self, hint: str, tp: Literal['vertex']) -> md.VertexId: ...
+
+    @overload
+    async def request_item_by_type(self, hint: str, tp: Literal['line']) -> md.EdgeId: ...
+
+    @overload
+    async def request_item_by_type(self, hint: str, tp: Literal['face']) -> md.FaceId: ...
+
+    async def request_item_by_type(self, hint: str, tp: Literal['vertex', 'line', 'face']):
         loop = asyncio.get_running_loop()
-        return loop.run_in_executor(None, task)
-
-    @overload
-    async def request_item_by_type(self, hint: str, tp: Literal['vertex']) -> Future[md.VertexId]: ...
-
-    @overload
-    async def request_item_by_type(self, hint: str, tp: Literal['line']) -> Future[md.EdgeId]: ...
-
-    @overload
-    async def request_item_by_type(self, hint: str, tp: Literal['face']) -> Future[md.FaceId]: ...
-
-    async def request_item_by_type(self, hint: str, tp: Literal['vertex', 'line', 'face']) -> Future:
+        future: Future[md.VertexId | md.EdgeId | md.FaceId] = loop.create_future()
         def task():
             self.app.hint_panel2.push_message(hint)
             self.app.cv.enable_selection_of_style({
@@ -295,9 +348,19 @@ class _AppCommandHandler:
                 'line': FoldedStateStyle.Crease,
                 'face': FoldedStateStyle.Face
             }[tp])
-            id = self.app.cv.wait_selection()
-            self.app.cv.disable_selection_all()
-            return id
 
-        loop = asyncio.get_running_loop()
-        return loop.run_in_executor(None, task)
+            def callback(_):
+                try:
+                    id = self.app.cv.selection_change
+                    loop.call_soon_threadsafe(future.set_result, id)
+                except Exception as e:
+                    loop.call_soon_threadsafe(future.set_exception, e)
+                finally:
+                    self.app.cv.disable_selection_all()
+                    self.app.cv.unbind('<<Select>>', callback_id)
+
+            callback_id = self.app.cv.bind('<<Select>>', callback)
+
+        self.app.after(0, task)
+        id = await future
+        return id

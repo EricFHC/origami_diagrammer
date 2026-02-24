@@ -201,12 +201,12 @@ class CanvasSelectionControl[U](CanvasPlus[U]):
                 if self.permit_user_deselect:
                     self.selection.remove(hover_id)
                     self.itemconfigure(hover_id, **style.hover)
-                    self.event_generate('<<Deselect>>', data=self.selection_change)
+                    self.event_generate('<<Deselect>>')
                     self.callback_deselect.emit(self.selection_change)
             else:
                 self.selection.add(hover_id)
                 self.itemconfigure(hover_id, **style.selected_hover)
-                self.event_generate('<<Select>>', data=self.selection_change)
+                self.event_generate('<<Select>>')
                 self.callback_select.emit(self.selection_change)
 
         def on_leave(_):
@@ -275,9 +275,9 @@ class CanvasSelectionControl[U](CanvasPlus[U]):
         :return U: The userdata of the newly selected item.
         """
         v = IntVar(self)
-        t = self.bind('<<Selected>>', lambda _: v.set(1))
+        t = self.bind('<<Select>>', lambda _: v.set(1))
         self.wait_variable(v)
-        self.unbind('<<Selected>>', t)
+        self.unbind('<<Select>>', t)
         return self.selection_change
 
 class CanvasSelectionChild[U](CanvasPlus[U]):
